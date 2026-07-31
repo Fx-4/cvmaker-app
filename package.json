@@ -1,0 +1,6 @@
+{
+  "name": "cvmaker-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Free ATS-friendly CV/resume builder with AI-assisted writing, no login required."
+}

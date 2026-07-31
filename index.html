@@ -1,0 +1,1375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CV Builder — cvmaker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* cvmaker design-system tokens (from DESIGN.md / colors_and_type.css) */
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 224 71.4% 4.1%;
+    --card: 0 0% 100%;
+    --primary: 220.9 39.3% 11%;
+    --primary-foreground: 210 20% 98%;
+    --secondary: 220 14.3% 95.9%;
+    --secondary-foreground: 220.9 39.3% 11%;
+    --muted: 220 14.3% 95.9%;
+    --muted-foreground: 220 8.9% 46.1%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 224 71.4% 4.1%;
+    --green: 142 71% 45%;
+    --verified: 203 89% 53%;
+    --radius: 0.5rem;
+    --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, "SF Mono", "Cascadia Code", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-sans); color: hsl(var(--foreground));
+    background: hsl(220 14.3% 97%); font-size: 14px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  }
+
+  .app { display: grid; grid-template-columns: minmax(380px,460px) 1fr; grid-template-rows: auto 1fr; height: 100vh; }
+  .topbar {
+    grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 10px 20px; background: hsl(var(--background)); border-bottom: 1px solid hsl(var(--border)); z-index: 5; flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand .mark { width: 30px; height: 30px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-weight: 700; font-size: 15px; }
+  .brand b { font-size: 15px; }
+  .brand span { color: hsl(var(--muted-foreground)); font-family: var(--font-mono); font-size: 11px; }
+  .topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  .btn { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: calc(var(--radius) - 2px);
+    border: 1px solid hsl(var(--border)); background: hsl(var(--background)); color: hsl(var(--foreground)); font-family: var(--font-sans);
+    font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s; }
+  .btn:hover { background: hsl(var(--secondary)); }
+  .btn svg { width: 15px; height: 15px; }
+  .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+  .btn-primary:hover { background: hsl(220.9 39.3% 17%); }
+  .btn-ghost { border-color: transparent; background: transparent; }
+  .btn-ghost:hover { background: hsl(var(--secondary)); }
+  .btn-sm { height: 30px; padding: 0 10px; font-size: 12px; }
+  .btn-icon { width: 30px; height: 30px; padding: 0; justify-content: center; }
+  select.ctrl { height: 34px; border-radius: 8px; border: 1px solid hsl(var(--input)); background: hsl(var(--background)); font-family: var(--font-sans); font-size: 12.5px; padding: 0 8px; cursor: pointer; }
+
+  .langtog { display: inline-flex; border: 1px solid hsl(var(--border)); border-radius: 8px; overflow: hidden; }
+  .langtog button { border: 0; background: hsl(var(--background)); font-family: var(--font-mono); font-size: 11px; font-weight: 600; padding: 0 11px; height: 34px; cursor: pointer; color: hsl(var(--muted-foreground)); }
+  .langtog button.on { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+
+  .editor { background: hsl(var(--background)); border-right: 1px solid hsl(var(--border)); display: flex; flex-direction: column; min-height: 0; }
+  .steps { display: flex; gap: 4px; padding: 14px 18px 0; }
+  .step-tab { flex: 1; position: relative; background: none; border: 0; cursor: pointer; padding: 6px 4px 12px; text-align: left; font-family: var(--font-sans); color: hsl(var(--muted-foreground)); }
+  .step-tab .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); font-family: var(--font-mono); font-size: 11px; font-weight: 600; margin-right: 7px; }
+  .step-tab .lbl { font-size: 12.5px; font-weight: 500; }
+  .step-tab::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: transparent; border-radius: 2px; }
+  .step-tab[aria-selected="true"] { color: hsl(var(--foreground)); }
+  .step-tab[aria-selected="true"] .n { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+  .step-tab[aria-selected="true"]::after { background: hsl(var(--primary)); }
+
+  .editor-scroll { overflow-y: auto; padding: 18px; flex: 1; min-height: 0; scrollbar-width: thin; }
+  .step-panel { display: none; }
+  .step-panel.active { display: block; animation: fade .25s ease both; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  .group { margin-bottom: 22px; }
+  .group > .group-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .group-head h3 { font-size: 13px; font-weight: 600; }
+  .group-head .hint { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+
+  .field { margin-bottom: 11px; }
+  .field.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  label.lab { display: block; font-size: 11.5px; font-weight: 500; color: hsl(var(--muted-foreground)); margin-bottom: 4px; font-family: var(--font-mono); }
+  input, textarea { width: 100%; font-family: var(--font-sans); font-size: 13px; color: hsl(var(--foreground)); background: hsl(var(--background)); border: 1px solid hsl(var(--input)); border-radius: calc(var(--radius) - 2px); padding: 8px 10px; transition: border-color .15s, box-shadow .15s; }
+  input::placeholder, textarea::placeholder { color: hsl(var(--muted-foreground) / .7); }
+  input:focus, textarea:focus { outline: none; border-color: hsl(var(--ring)); box-shadow: 0 0 0 3px hsl(var(--ring) / .12); }
+  textarea { resize: vertical; min-height: 64px; line-height: 1.55; }
+  .field-mono input { font-family: var(--font-mono); font-size: 12.5px; }
+  label.chk { display: flex; align-items: center; gap: 8px; font-size: 12.5px; cursor: pointer; }
+  label.chk input { width: auto; }
+
+  .photo-row { display: flex; align-items: center; gap: 12px; }
+  .photo-thumb { width: 60px; height: 60px; border-radius: 12px; background: hsl(var(--secondary)); display: grid; place-items: center; overflow: hidden; color: hsl(var(--muted-foreground)); font-size: 12px; flex: none; border: 1px solid hsl(var(--border)); }
+  .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .photo-actions { display: flex; flex-direction: column; gap: 6px; }
+  .bg-checkerboard {
+    background-color: #ffffff;
+    background-image: linear-gradient(45deg, #f5f5f5 25%, transparent 25%), linear-gradient(-45deg, #f5f5f5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f5f5f5 75%), linear-gradient(-45deg, transparent 75%, #f5f5f5 75%);
+    background-size: 10px 10px;
+    background-position: 0 0, 0 5px, 5px -5px, -5px 0px;
+  }
+
+  .item { border: 1px solid hsl(var(--border)); border-radius: var(--radius); padding: 13px; margin-bottom: 12px; background: hsl(var(--background)); }
+  .item-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .item-head .idx { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: .08em; }
+  .item-tools { display: flex; gap: 4px; }
+  .add-btn { display: inline-flex; align-items: center; gap: 6px; width: 100%; justify-content: center; height: 38px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--background)); color: hsl(var(--muted-foreground)); font-family: var(--font-sans); font-size: 12.5px; font-weight: 500; cursor: pointer; transition: border-color .15s, color .15s, background .15s; }
+  .add-btn:hover { border-color: hsl(var(--ring)); color: hsl(var(--foreground)); background: hsl(var(--secondary)); }
+
+  .chips-input { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border: 1px solid hsl(var(--input)); border-radius: calc(var(--radius) - 2px); padding: 6px 8px; min-height: 38px; }
+  .chips-input:focus-within { border-color: hsl(var(--ring)); box-shadow: 0 0 0 3px hsl(var(--ring) / .12); }
+  .chip { display: inline-flex; align-items: center; gap: 5px; background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); border-radius: calc(var(--radius) - 2px); padding: 2px 4px 2px 8px; font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+  .chip button { border: 0; background: none; cursor: pointer; color: hsl(var(--muted-foreground)); font-size: 13px; line-height: 1; padding: 0 2px; }
+  .chips-input input { border: 0; padding: 4px; flex: 1; min-width: 80px; box-shadow: none; }
+  .chips-input input:focus { box-shadow: none; }
+
+  .step-nav { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; }
+
+  .preview { min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; padding: 28px 28px 60px;
+    background: radial-gradient(hsl(var(--border) / .55) 1px, transparent 1px) 0 0 / 22px 22px, hsl(220 14.3% 97%); }
+  .preview-bar { width: 100%; max-width: 820px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; color: hsl(var(--muted-foreground)); font-family: var(--font-mono); font-size: 11px; }
+  .preview-bar .save-state { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: hsl(var(--green)); }
+  .zoom-wrap { display: flex; align-items: center; gap: 6px; }
+
+  .page-scaler { transform-origin: top center; }
+  .page { width: 210mm; min-height: 297mm; background: hsl(var(--card)); box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 12px 40px rgba(16,24,40,.12); padding: 16mm 16mm 14mm; color: hsl(var(--foreground)); }
+
+  /* ---- Résumé common ---- */
+  .r-head { display: flex; gap: 18px; }
+  .r-head .info { flex: 1; min-width: 0; }
+  .r-name { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+  .r-role { font-family: var(--font-mono); font-size: 13px; color: hsl(var(--foreground) / .8); margin-top: 6px; }
+  .r-about { font-size: 13px; color: hsl(var(--foreground) / .82); margin-top: 8px; text-wrap: pretty; }
+  .r-contact { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 11px; font-family: var(--font-mono); font-size: 11.5px; color: hsl(var(--foreground) / .82); align-items: center; }
+  .r-contact a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
+  .r-contact a:hover { text-decoration: underline; }
+  .r-contact svg { width: 12px; height: 12px; flex: none; opacity: .8; }
+  .r-contact .sep { color: hsl(var(--muted-foreground) / .6); }
+  .r-avatar { width: 96px; height: 96px; border-radius: 14px; background: hsl(var(--muted)); border: 1px solid hsl(var(--border)); display: grid; place-items: center; font-weight: 700; font-size: 26px; color: hsl(var(--muted-foreground)); flex: none; }
+  .r-photo { width: 96px; height: 96px; border-radius: 14px; object-fit: cover; border: 1px solid hsl(var(--border)); flex: none; }
+
+  .r-section { margin-top: 20px; }
+  .r-section > h2 { font-size: 15px; font-weight: 700; padding-bottom: 5px; border-bottom: 1px solid hsl(var(--border)); margin-bottom: 11px; }
+  .r-entry { margin-bottom: 12px; }
+  .r-entry:last-child { margin-bottom: 0; }
+  .r-entry-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .r-entry-title { font-size: 13.5px; font-weight: 600; }
+  .r-entry-title .at { color: hsl(var(--muted-foreground)); font-weight: 500; }
+  .r-period { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }
+  .r-desc { font-size: 12.5px; color: hsl(var(--foreground) / .82); margin-top: 4px; text-wrap: pretty; white-space: pre-line; }
+  .r-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+  .r-badge { font-family: var(--font-mono); font-size: 10px; font-weight: 600; background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); border-radius: 5px; padding: 2px 7px; line-height: 1.3; }
+  .r-projects-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+  .r-proj { border: 1px solid hsl(var(--border)); border-radius: var(--radius); padding: 11px; }
+  .r-proj .r-entry-title { font-size: 13px; }
+  .r-proj .r-desc { margin-top: 4px; font-size: 11.5px; }
+  .r-skill-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  .feat { font-family: var(--font-mono); font-size: 8.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; background: hsl(var(--verified) / .14); color: hsl(var(--verified)); border-radius: 4px; padding: 1px 5px; margin-left: 6px; vertical-align: middle; }
+  .cert-check { display: inline-flex; align-items: center; margin-left: 6px; vertical-align: middle; }
+  .cert-check svg { width: 14px; height: 14px; }
+  .link-dot { width: 5px; height: 5px; border-radius: 50%; background: hsl(var(--green)); display: inline-block; margin-left: 5px; vertical-align: middle; }
+
+  /* ---- Theme: ATS (default) — mirrors a clean, left-aligned ATS résumé ---- */
+  .page.theme-ats { font-family: Arial, Helvetica, sans-serif; color: #111; }
+  .theme-ats .r-head { display: flex; flex-direction: row; justify-content: space-between; align-items: flex-start; text-align: left; gap: 16px; }
+  .theme-ats .r-photo, .theme-ats .r-avatar { order: 1; width: 80px; height: 80px; border-radius: 50%; }
+  .theme-ats .r-name { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; text-transform: uppercase; line-height: 1.1; }
+  .theme-ats .r-role { font-family: Arial, Helvetica, sans-serif; font-size: 13px; font-weight: 600; color: #333; margin-top: 4px; }
+  .theme-ats .r-about { text-align: left; margin-top: 8px; font-size: 12.5px; line-height: 1.5; }
+  .theme-ats .r-contact { justify-content: flex-start; margin-top: 8px; }
+  .theme-ats .r-section > h2 { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1.5px solid #111; }
+  .theme-ats .r-projects-grid { grid-template-columns: 1fr; }
+  .theme-ats .r-proj { border: 0; border-radius: 0; padding: 0; }
+  .theme-ats .r-period { font-family: Arial, Helvetica, sans-serif; font-size: 11.5px; color: #555; font-weight: 500; }
+
+  /* ---- Theme: ATS Bold — centered traditional bold ATS ---- */
+  .page.theme-ats-bold { font-family: Arial, Helvetica, sans-serif; color: #000; }
+  .theme-ats-bold .r-head { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; }
+  .theme-ats-bold .r-photo, .theme-ats-bold .r-avatar { order: -1; width: 80px; height: 80px; border-radius: 50%; }
+  .theme-ats-bold .r-name { font-size: 28px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.0; }
+  .theme-ats-bold .r-role { font-size: 13px; font-weight: 700; color: #222; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .theme-ats-bold .r-about { text-align: justify; margin-top: 10px; font-size: 12.5px; line-height: 1.5; }
+  .theme-ats-bold .r-contact { justify-content: center; margin-top: 6px; }
+  .theme-ats-bold .r-section > h2 { font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 2px solid #000; margin-bottom: 12px; }
+  .theme-ats-bold .r-projects-grid { grid-template-columns: 1fr; }
+  .theme-ats-bold .r-period { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #000; font-weight: 700; }
+  .theme-ats-bold .r-entry-title { font-size: 14px; font-weight: 700; }
+
+  /* ---- Theme: Modern (left name + photo right, navy accent) ---- */
+  .theme-modern .r-head { flex-direction: row; justify-content: space-between; align-items: flex-start; }
+  .theme-modern .r-about { max-width: 64ch; }
+
+  /* ---- Theme: Classic (serif, centered) ---- */
+  .page.theme-classic { font-family: Georgia, "Times New Roman", serif; }
+  .theme-classic .r-head { flex-direction: column; align-items: center; text-align: center; gap: 8px; }
+  .theme-classic .r-photo, .theme-classic .r-avatar { order: -1; border-radius: 50%; width: 88px; height: 88px; }
+  .theme-classic .r-name { font-size: 30px; letter-spacing: 0; }
+  .theme-classic .r-role { font-family: Georgia, serif; }
+  .theme-classic .r-about { text-align: center; margin-left: auto; margin-right: auto; max-width: 60ch; }
+  .theme-classic .r-contact { justify-content: center; }
+  .theme-classic .r-section > h2 { text-align: center; font-family: Georgia, serif; letter-spacing: .04em; border-bottom: 1px solid #aaa; }
+  .theme-classic .r-projects-grid { grid-template-columns: 1fr; }
+
+  /* ---- Theme: Sidebar (two columns) ---- */
+  .page.theme-sidebar { font-family: var(--font-sans); color: hsl(var(--foreground)); padding: 14mm 12mm 12mm; }
+  .theme-sidebar .r-sidebar-layout { display: grid; grid-template-columns: 1.8fr 4fr; gap: 20px; height: 100%; }
+  .theme-sidebar .r-sidebar-left { border-right: 1px solid hsl(var(--border)); padding-right: 18px; display: flex; flex-direction: column; gap: 16px; }
+  .theme-sidebar .r-sidebar-right { display: flex; flex-direction: column; gap: 6px; }
+  .theme-sidebar .r-photo, .theme-sidebar .r-avatar { width: 84px; height: 84px; border-radius: 50%; margin-bottom: 4px; }
+  .theme-sidebar .r-side-name { font-size: 22px; font-weight: 700; line-height: 1.1; color: hsl(var(--primary)); }
+  .theme-sidebar .r-side-role { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); margin-top: 3px; }
+  .theme-sidebar .r-side-about { font-size: 11.5px; color: hsl(var(--foreground) / .8); margin-top: 6px; line-height: 1.5; text-align: left; }
+  .theme-sidebar .r-side-section { margin-top: 8px; }
+  .theme-sidebar .r-side-section h3 { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid hsl(var(--border)); padding-bottom: 3px; margin-bottom: 6px; }
+  .theme-sidebar .r-side-contact { display: flex; flex-direction: column; gap: 5px; font-size: 11px; }
+  .theme-sidebar .r-side-contact a, .theme-sidebar .r-side-contact span { display: flex; align-items: center; gap: 6px; text-decoration: none; color: inherit; }
+  .theme-sidebar .r-side-contact svg { width: 11px; height: 11px; opacity: 0.8; }
+  .theme-sidebar .r-section { margin-top: 10px; }
+  .theme-sidebar .r-section > h2 { font-size: 13.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid hsl(var(--border)); padding-bottom: 3px; margin-bottom: 8px; color: hsl(var(--primary)); }
+  .theme-sidebar .r-badges { margin-top: 3px; }
+  .theme-sidebar .r-badge { font-size: 9px; padding: 1px 5px; }
+
+  /* ---- Theme: Minimalist ---- */
+  .page.theme-minimalist { font-family: var(--font-sans); color: #222; }
+  .theme-minimalist .r-head { display: flex; flex-direction: row; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 10px; }
+  .theme-minimalist .r-photo, .theme-minimalist .r-avatar { width: 76px; height: 76px; border-radius: 6px; }
+  .theme-minimalist .r-name { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+  .theme-minimalist .r-role { font-family: var(--font-mono); font-size: 11.5px; color: #555; margin-top: 2px; }
+  .theme-minimalist .r-about { font-size: 12px; color: #444; margin-top: 6px; line-height: 1.5; }
+  .theme-minimalist .r-contact { gap: 10px; margin-top: 6px; font-size: 11px; }
+  .theme-minimalist .r-section { margin-top: 14px; }
+  .theme-minimalist .r-section > h2 { font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; border: 0; border-bottom: 1px solid #eee; padding-bottom: 2px; color: #555; }
+  .theme-minimalist .r-entry { margin-bottom: 6px; }
+  .theme-minimalist .r-entry-title { font-size: 13px; font-weight: 600; }
+  .theme-minimalist .r-period { font-size: 10.5px; color: #777; }
+  .theme-minimalist .r-desc { font-size: 12px; color: #444; }
+  .theme-minimalist .r-badge { background: #f1f1f1; color: #444; border-radius: 3px; font-size: 9.5px; }
+
+  /* ---- Theme: Elegant ---- */
+  .page.theme-elegant { font-family: "Geist", sans-serif; color: #2d3748; }
+  .theme-elegant .r-head { display: flex; flex-direction: row; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .theme-elegant .r-photo, .theme-elegant .r-avatar { width: 84px; height: 84px; border-radius: 8px; }
+  .theme-elegant .r-name { font-family: Georgia, serif; font-size: 32px; font-weight: normal; color: #1a202c; }
+  .theme-elegant .r-role { font-family: Georgia, serif; font-style: italic; font-size: 13.5px; color: #4a5568; margin-top: 4px; }
+  .theme-elegant .r-about { font-size: 12.5px; line-height: 1.6; color: #4a5568; margin-top: 8px; }
+  .theme-elegant .r-contact { margin-top: 8px; }
+  .theme-elegant .r-section { margin-top: 18px; }
+  .theme-elegant .r-section > h2 { font-family: Georgia, serif; font-weight: normal; font-size: 15px; color: #1a202c; border-bottom: 1px solid #cbd5e0; padding-bottom: 3px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .theme-elegant .r-entry-title { font-size: 13.5px; font-weight: 600; color: #2d3748; }
+  .theme-elegant .r-period { font-family: var(--font-mono); font-size: 11px; color: #718096; }
+
+  /* ---- Theme: Haikal (exact PDF replication) ---- */
+  .page.theme-haikal {
+    font-family: Arial, Helvetica, sans-serif;
+    color: #000000;
+    padding: 32pt 20pt 24pt !important;
+    background: #ffffff;
+  }
+  .theme-haikal .r-head {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 17px;
+    margin-bottom: 20px;
+  }
+  .theme-haikal .r-photo, .theme-haikal .r-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 4px;
+    border: 1px solid #d1d5db;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+  .theme-haikal .r-avatar {
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    font-size: 24px;
+    background: #e5e7eb;
+    color: #4b5563;
+  }
+  .theme-haikal .r-name {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 18pt;
+    font-weight: bold;
+    color: #000000;
+    text-transform: uppercase;
+    line-height: 1.1;
+    margin-bottom: 4px;
+    letter-spacing: -0.01em;
+  }
+  .theme-haikal .r-role {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 9pt;
+    font-weight: bold;
+    color: #000000;
+    margin-top: 2px;
+    margin-bottom: 4px;
+  }
+  .theme-haikal .r-about {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 9pt;
+    color: #000000;
+    margin-top: 6px;
+    line-height: 1.4;
+    text-wrap: pretty;
+  }
+  .theme-haikal .r-contact {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 9pt;
+    color: #808080;
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+    line-height: 1.3;
+  }
+  .theme-haikal .r-contact a {
+    color: #808080;
+    text-decoration: none;
+  }
+  .theme-haikal .r-contact a:hover {
+    text-decoration: underline;
+  }
+  .theme-haikal .r-contact .sep {
+    color: #000000;
+    margin: 0 4px;
+    font-weight: normal;
+  }
+  .theme-haikal .r-section {
+    margin-top: 16px;
+  }
+  .theme-haikal .r-section > h2 {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12pt;
+    font-weight: bold;
+    color: #000000;
+    border-bottom: 1px solid #000000;
+    padding-bottom: 3px;
+    margin-bottom: 8px;
+    text-transform: none;
+    letter-spacing: normal;
+  }
+  .theme-haikal .r-entry {
+    margin-bottom: 10px;
+  }
+  .theme-haikal .r-entry-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 9pt;
+    margin-bottom: 2px;
+  }
+  .theme-haikal .r-entry-title {
+    font-weight: bold;
+    color: #000000;
+  }
+  .theme-haikal .r-entry-title .location {
+    color: #808080;
+    font-weight: bold;
+  }
+  .theme-haikal .r-period {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 9pt;
+    color: #000000;
+    white-space: nowrap;
+  }
+  .theme-haikal .r-role {
+    font-family: Arial, Helvetica, sans-serif;
+    font-style: italic;
+    font-size: 9pt;
+    color: #000000;
+    margin-top: 1px;
+    margin-bottom: 4px;
+  }
+  .theme-haikal .r-org-desc {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 9pt;
+    color: #808080;
+    margin-top: 2px;
+    margin-bottom: 4px;
+    line-height: 1.4;
+  }
+  .theme-haikal .r-bullet {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    margin-top: 2.5px;
+    margin-bottom: 2.5px;
+  }
+  .theme-haikal .bullet-sq {
+    width: 3px;
+    height: 3px;
+    background: #000000;
+    margin-top: 5.5px;
+    flex-shrink: 0;
+  }
+  .theme-haikal .bullet-text {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 9pt;
+    color: #000000;
+    line-height: 1.4;
+  }
+  .theme-haikal .bullet-text a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .theme-haikal .bullet-text strong {
+    font-weight: bold;
+  }
+
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); padding: 9px 16px; border-radius: 999px; font-size: 12.5px; font-weight: 500; box-shadow: 0 8px 24px rgba(16,24,40,.2); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 50; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  .field-head .lab { margin-bottom: 0; }
+  .ai-btn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid hsl(var(--border)); background: hsl(var(--background)); color: hsl(var(--primary)); font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px; cursor: pointer; transition: background .15s, opacity .15s; white-space: nowrap; }
+  .ai-btn:hover { background: hsl(var(--secondary)); }
+  .ai-btn[disabled] { opacity: .55; cursor: default; }
+
+  .dropzone { border: 1.5px dashed hsl(var(--border)); border-radius: var(--radius); padding: 18px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  .dropzone:hover, .dropzone.dragover { border-color: hsl(var(--ring)); background: hsl(var(--secondary)); }
+  .dropzone:focus-visible { outline: none; border-color: hsl(var(--ring)); box-shadow: 0 0 0 3px hsl(var(--ring) / .12); }
+  .dropzone-icon { font-size: 22px; margin-bottom: 6px; }
+  .dropzone-text { font-size: 12.5px; }
+  .dropzone-text .dz-link { color: hsl(var(--primary)); text-decoration: underline; font-weight: 600; }
+  .dropzone-sub { font-size: 11px; color: hsl(var(--muted-foreground)); margin-top: 4px; font-family: var(--font-mono); }
+  .dropzone.busy { opacity: .65; pointer-events: none; }
+
+  @media (max-width: 980px) { .app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; } .editor { border-right: 0; border-bottom: 1px solid hsl(var(--border)); max-height: 52vh; } }
+
+  @media print {
+    @page { size: A4; margin: 16mm 16mm 14mm; }
+    html, body { height: auto !important; min-height: initial !important; overflow: visible !important; background: #fff; }
+    .app { display: block !important; height: auto !important; min-height: initial !important; overflow: visible !important; }
+    .topbar, .editor, .preview-bar, .toast { display: none !important; }
+    .preview { padding: 0; background: #fff; display: block !important; height: auto !important; min-height: initial !important; overflow: visible !important; }
+    .page-scaler { transform: none !important; width: 100% !important; height: auto !important; display: block !important; }
+    .page { width: 100% !important; min-height: initial !important; box-shadow: none !important; margin: 0 !important; padding: 0 !important; }
+    * { animation: none !important; transition: none !important; }
+    a { color: inherit !important; text-decoration: none !important; }
+    .r-section { break-inside: auto; }
+    .r-section > h2 { break-after: avoid; }
+    .r-entry, .r-proj, .r-bullet { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark">CV</div>
+      <div><b>CV Builder</b><br /><span>cvmaker · A4 · ATS</span></div>
+    </div>
+    <div class="topbar-actions">
+      <select class="ctrl" id="themeSel" aria-label="Theme">
+        <option value="ats">ATS Classic</option>
+        <option value="ats-bold">ATS Bold</option>
+        <option value="modern">Modern Professional</option>
+        <option value="classic">Classic Serif</option>
+        <option value="sidebar">Modern Sidebar</option>
+        <option value="minimalist">Minimalist</option>
+        <option value="elegant">Elegant Executive</option>
+        <option value="haikal">Haikal PDF Layout</option>
+      </select>
+      <button class="btn btn-sm" id="loadSample" type="button" data-i18n="btnSample">Load sample</button>
+      <button class="btn btn-sm" id="resetBtn" type="button" data-i18n="btnReset">Clear</button>
+      <button class="btn btn-primary" id="printBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        <span data-i18n="btnPrint">Print / PDF</span>
+      </button>
+    </div>
+  </header>
+
+  <section class="editor" aria-label="Resume Editor">
+    <div class="steps" role="tablist">
+      <button class="step-tab" role="tab" data-step="0" aria-selected="true"><span class="n">1</span><span class="lbl" data-i18n="step1">Profile</span></button>
+      <button class="step-tab" role="tab" data-step="1" aria-selected="false"><span class="n">2</span><span class="lbl" data-i18n="step2">Experience</span></button>
+      <button class="step-tab" role="tab" data-step="2" aria-selected="false"><span class="n">3</span><span class="lbl" data-i18n="step3">Skills &amp; Projects</span></button>
+      <button class="step-tab" role="tab" data-step="3" aria-selected="false"><span class="n">4</span><span class="lbl">ATS Guide</span></button>
+    </div>
+    <div class="editor-scroll">
+      <!-- Step 1 -->
+      <div class="step-panel active" data-panel="0">
+        <div class="group">
+          <div class="group-head"><h3>Import existing CV</h3><span class="hint">optional</span></div>
+          <div class="field">
+            <div id="cvDropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload existing CV PDF">
+              <div class="dropzone-icon">📄</div>
+              <div class="dropzone-text"><strong>Drop your old CV (PDF)</strong> here, or <span class="dz-link">browse</span></div>
+              <div class="dropzone-sub">AI will read it and fill in the form for you</div>
+              <input type="file" id="cvFileInput" accept="application/pdf,.pdf" hidden />
+            </div>
+          </div>
+        </div>
+        <div class="group">
+          <div class="group-head"><h3 data-i18n="grpPersonal">Personal info</h3></div>
+          <div class="field">
+            <label class="lab" data-i18n="fPhoto">Profile photo</label>
+            <div class="photo-row">
+              <div class="photo-thumb" id="photoThumb">—</div>
+              <div class="photo-actions">
+                <div style="display: flex; gap: 6px;">
+                  <label class="btn btn-sm" for="photoInput" data-i18n="photoPick">Choose photo</label>
+                  <input type="file" id="photoInput" accept="image/*" hidden />
+                  <button class="btn btn-sm btn-ghost" id="photoRemove" type="button" data-i18n="photoRemove">Remove</button>
+                </div>
+                <div id="photoBgGroup" style="display: none; align-items: center; gap: 8px; margin-top: 2px;">
+                  <label class="lab" style="margin-bottom: 0; font-size: 11px; white-space: nowrap;" data-i18n="fPhotoBg">Background:</label>
+                  <select class="ctrl" id="photoBgSel" style="height: 28px; padding: 0 6px; font-size: 11.5px; border-radius: 6px; min-width: 100px;">
+                    <option value="transparent" data-i18n="optBgTrans">Transparent</option>
+                    <option value="white" data-i18n="optBgWhite">White</option>
+                    <option value="muted" data-i18n="optBgMuted">Gray</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="field"><label class="lab" data-i18n="fName">Full name</label><input data-bind="name" /></div>
+          <div class="field"><label class="lab" data-i18n="fRole">Headline / title</label><input data-bind="role" /></div>
+          <div class="field"><div class="field-head"><label class="lab" data-i18n="fAbout">Summary</label><button type="button" class="ai-btn" id="aiAboutBtn">✨ AI improve</button></div><textarea data-bind="about"></textarea></div>
+          <div class="field"><label class="lab" data-i18n="fLocation">Location</label><input data-bind="location" /></div>
+        </div>
+        <div class="group">
+          <div class="group-head"><h3 data-i18n="grpContact">Contacts &amp; links</h3></div>
+          <div class="field field-mono"><label class="lab" data-i18n="fEmail">Email</label><input data-bind="email" placeholder="name@email.com" /></div>
+          <div class="field field-mono"><label class="lab" data-i18n="fPhone">Phone</label><input data-bind="phone" placeholder="Phone number" /></div>
+          <div class="field field-mono"><label class="lab" data-i18n="fLinkedin">LinkedIn</label><input data-bind="linkedin" placeholder="linkedin.com/in/username" /></div>
+          <div class="field field-mono"><label class="lab" data-i18n="fGithub">GitHub</label><input data-bind="github" placeholder="github.com/username" /></div>
+          <div class="field field-mono"><label class="lab" data-i18n="fInstagram">Instagram</label><input data-bind="instagram" placeholder="instagram.com/username" /></div>
+          <div class="field field-mono"><label class="lab" data-i18n="fWebsite">Website / portfolio</label><input data-bind="website" placeholder="yourname.vercel.app" /></div>
+        </div>
+        <div class="step-nav"><span></span><button class="btn btn-sm" data-goto="1" type="button" data-i18n="navNext1">Next: Experience →</button></div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step-panel" data-panel="1">
+        <div class="group"><div class="group-head"><h3 data-i18n="grpOrg">Organizational experience</h3><span class="hint" id="cnt-org"></span></div><div id="list-org"></div><button class="add-btn" data-add="org" type="button" data-i18n="addOrg">+ Add organization</button></div>
+        <div class="group"><div class="group-head"><h3 data-i18n="grpEdu">Education</h3><span class="hint" id="cnt-edu"></span></div><div id="list-edu"></div><button class="add-btn" data-add="education" type="button" data-i18n="addEdu">+ Add education</button></div>
+        <div class="group"><div class="group-head"><h3 data-i18n="grpAch">Achievements &amp; certificates</h3><span class="hint" id="cnt-ach"></span></div><div id="list-ach"></div><button class="add-btn" data-add="ach" type="button" data-i18n="addAch">+ Add achievement</button></div>
+        <div class="step-nav"><button class="btn btn-sm" data-goto="0" type="button" data-i18n="navBack">← Back</button><button class="btn btn-sm" data-goto="2" type="button" data-i18n="navNext2">Next: Skills &amp; Projects →</button></div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step-panel" data-panel="2">
+        <div class="group"><div class="group-head"><h3 data-i18n="grpSkill">Skills</h3><span class="hint" data-i18n="hintSkill">Press Enter to add</span></div><div class="chips-input" id="skills-input"><input id="skill-entry" aria-label="skill" /></div></div>
+        <div class="group"><div class="group-head"><h3 data-i18n="grpProj">Projects</h3><span class="hint" id="cnt-proj"></span></div><div id="list-proj"></div><button class="add-btn" data-add="proj" type="button" data-i18n="addProj">+ Add project</button></div>
+        <div class="step-nav"><button class="btn btn-sm" data-goto="1" type="button" data-i18n="navBack">← Back</button><button class="btn btn-sm" data-goto="3" type="button">Next: ATS Guide →</button></div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="step-panel" data-panel="3">
+        <div class="group">
+          <div class="group-head"><h3>ATS Optimization Checklist</h3></div>
+          <div style="font-size:12px; line-height:1.6; display:flex; flex-direction:column; gap:8px; color:hsl(var(--foreground)/.85); background:hsl(var(--secondary)); padding:12px; border-radius:8px; border:1px solid hsl(var(--border));">
+            <div><strong>1. Single-Column Layout:</strong> Multi-column layouts confuse ATS parsers. Stick to a clean single column.</div>
+            <div><strong>2. No Tables or Text Boxes:</strong> Keep the structure flat and linear.</div>
+            <div><strong>3. Standard Fonts:</strong> Use preinstalled fonts like Arial, Calibri, Georgia, or Times New Roman.</div>
+            <div><strong>4. Comma-Separated Keywords:</strong> Plain text keywords (rendered by default in ATS themes) are much easier for search engines to scan.</div>
+            <div><strong>5. Action Verbs:</strong> Start descriptions with powerful words: "Implemented", "Led", "Optimized", "Engineered".</div>
+          </div>
+        </div>
+        <div class="group">
+          <div class="group-head"><h3>ATS High-Converting Examples</h3></div>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <div class="item" style="margin-bottom:0; padding:10px;">
+              <div class="item-head"><span class="idx" style="color:hsl(var(--primary)); font-size:11px;">Example: Full Stack Tech Resume</span></div>
+              <div style="font-size:11px; color:hsl(var(--muted-foreground)); line-height:1.5; margin-top:4px;">
+                <strong>Headline:</strong> Software Engineer | React, Node.js & TypeScript<br/>
+                <strong>Summary:</strong> Informatics candidate with experience building robust web applications. Specialize in web app performance and database efficiency.<br/>
+                <strong>Project description:</strong> "SajiGo: Restaurant order management platform. Handled payments integration and real-time dashboard analytics."
+              </div>
+            </div>
+            <div class="item" style="margin-bottom:0; padding:10px;">
+              <div class="item-head"><span class="idx" style="color:hsl(var(--primary)); font-size:11px;">Example: UI/UX & Web Developer</span></div>
+              <div style="font-size:11px; color:hsl(var(--muted-foreground)); line-height:1.5; margin-top:4px;">
+                <strong>Headline:</strong> UI/UX Designer & Web Developer<br/>
+                <strong>Summary:</strong> Specializing in clean design systems and accessible frontend implementations. Skilled in Figma, React, and CSS.<br/>
+                <strong>Project description:</strong> "Hanzi Narrative: Educational platform for learning Chinese characters. Designed custom stroke order visualizers in Figma and built with React."
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="step-nav"><button class="btn btn-sm" data-goto="2" type="button">← Back</button><button class="btn btn-primary btn-sm" id="printBtn3" type="button">Print / PDF</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="preview" aria-label="Resume Preview">
+    <div class="preview-bar">
+      <span class="save-state"><span class="dot"></span><span id="saveText">Auto-saved</span></span>
+      <span class="zoom-wrap">
+        <button class="btn btn-icon btn-sm" id="zoomOut" type="button">−</button>
+        <span id="zoomLabel" style="min-width:42px;text-align:center">100%</span>
+        <button class="btn btn-icon btn-sm" id="zoomIn" type="button">+</button>
+      </span>
+    </div>
+    <div class="page-scaler" id="scaler"><article class="page theme-ats" id="page"></article></div>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  var STORE = "cvbuilder:data:v3";
+
+  var IC = {
+    mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg>',
+    phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+    pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
+    linkedin: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77Z"/></svg>',
+    github: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2Z"/></svg>',
+    instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>',
+    web: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+    check: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="hsl(203 89% 53%)"/><path d="M8.5 12.3l2.2 2.2 4.6-5" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  };
+
+  // ---------- i18n (Force English) ----------
+  var L = {
+    en: {
+      btnSample:"Load sample", btnReset:"Clear", btnPrint:"Print / PDF",
+      step1:"Profile", step2:"Experience", step3:"Skills & Projects",
+      grpPersonal:"Personal info", grpContact:"Contacts & links",
+      fPhoto:"Profile photo", photoPick:"Choose photo", photoRemove:"Remove",
+      fPhotoBg:"Background", optBgTrans:"Transparent", optBgWhite:"White", optBgMuted:"Gray",
+      fName:"Full name", fRole:"Headline / title", fAbout:"Summary", fLocation:"Location",
+      fEmail:"Email", fPhone:"Phone", fLinkedin:"LinkedIn", fGithub:"GitHub", fInstagram:"Instagram", fWebsite:"Website / portfolio",
+      grpOrg:"Organizational experience", grpEdu:"Education", grpAch:"Achievements & certificates", grpSkill:"Skills", grpProj:"Projects",
+      addOrg:"+ Add organization", addEdu:"+ Add education", addAch:"+ Add achievement", addProj:"+ Add project",
+      hintSkill:"Press Enter to add", navNext1:"Next: Experience →", navNext2:"Next: Skills & Projects →", navBack:"← Back", navFinish:"Done — Print / PDF",
+      saved:"Auto-saved", saving:"Saving…",
+      secOrg:"Organizational Experience", secEdu:"Education", secProj:"Projects", secSkill:"Skills", secAch:"Achievements & Certificates",
+      featuredTag:"Featured", certTitle:"View certificate (Google Drive)", itemWord:"items", emptyWord:"empty",
+      mStart:"Start", mEnd:"End", mLoc:"Location",
+      oRole:"Role", oOrg:"Organization", oDesc:"Description", oCert:"Certificate link (Google Drive, optional)",
+      eSchool:"Institution / school", eDegree:"Major / degree", eNote:"Note (optional)", eCert:"Certificate / diploma link (optional)",
+      aTitle:"Title", aYear:"Year", aDesc:"Description", aCert:"Certificate link (Google Drive)",
+      pName:"Project name", pRole:"Type / Role", pLink:"Link", pDesc:"Description", pTech:"Tech stack", pFeat:"Mark as featured",
+      lOrg:"Org", lEdu:"Edu", lAch:"Award", lProj:"Project",
+      toastSample:"Sample loaded — edit it into your own data", toastClear:"Cleared", confirmClear:"Clear all résumé fields?"
+    }
+  };
+  L.id = L.en; // Fallback mapping in case existing storage refers to 'id'
+  function T(k) { return (L[state.lang] && L[state.lang][k]) || L.en[k] || k; }
+
+  function blank() {
+    return { lang:"en", theme:"ats", usingSample:false, photo:"", photoBg:"transparent",
+      name:"", role:"", about:"", location:"", email:"", phone:"", linkedin:"", github:"", instagram:"", website:"",
+      work:[], org:[], education:[], ach:[], skills:[], proj:[] };
+  }
+
+  function sampleData(lang) {
+    return {
+      lang: "en", theme: "ats", usingSample: true, photo: "", photoBg: "transparent",
+      name: "Haikal Hifzhi Helmy",
+      role: "Fullstack Web Developer",
+      about: "Informatics student (UII) & Software Engineering Double Degree candidate (NXU) with a focus on innovative tech solutions. Known for perseverance and a collaborative mindset, I combine international academic perspectives with a hands-on approach to modern software development. My main projects are Hanzi Narrative (an interactive Chinese learning platform) and SajiGo (a smart restaurant order management system).",
+      location: "Yogyakarta, Indonesia",
+      email: "haikalhelmy14@gmail.com", phone: "085211849390",
+      linkedin: "linkedin.com/in/haikal-helmy-875787305", github: "github.com/Fx-4", instagram: "", website: "f-4-work.vercel.app",
+      work: [],
+      org: [
+        { org:"GDGoC (Google Developer Groups on Campus)", role:"core team - Creative", start:"Aug 2024", end:"Nov 2025", cert:"", summary:"GDGoC (Game Development Community) is a hub for collaboration and skill-building in game development. The Core Team handles strategy and coordination.\nthe Creative Division focuses on visuals, promotions, and branding." },
+        { org:"BEGIN (Board Enthusiasts' Group for Interactive Networking)", role:"Co-Founder", start:"Jul 2024", end:"Present", cert:"", summary:"BEGIN (Board Enthusiasts' Group for Interactive Networking) is a vibrant community where board game enthusiasts come together to socialize, play, and build connections.\nOrganize and facilitate weekly board game sessions." },
+        { org:"PESTA (Orientation & Campus Introduction)", role:"Mentoring Member", start:"Aug 2024", end:"Sep 2024", cert:"", summary:"The orientation committee organizes and facilitates activities to help new students transition into university life. It focuses on introducing campus culture, academic systems, and fostering connections among students.\nThe Waljam Division (Class Assistance and Mentoring) in UII's orientation committee is responsible for guiding new students throughout the orientation program." },
+        { org:"Porsematik at UII (Informatics Student Orientation, Sports, and Arts Week)", role:"The PDD Division (Publication, Documentation, and Design)", start:"Dec 2024", end:"", cert:"", summary:"Porsematik at UII (Informatics Student Orientation, Sports, and Arts Week) is an event that combines orientation, sports, and arts to help new students integrate into the Informatics community while showcasing their talents and fostering camaraderie.\nThe PDD Division (Publication, Documentation, and Design) is responsible for managing event visuals, creating promotional content, and documenting activities to ensure proper coverage and branding of the event." },
+        { org:"crew", role:"head of scouting activities", start:"Aug 2022", end:"Aug 2023", cert:"", summary:"Part of 'Ambalan', the Scout organizational unit at Citra Islami High School.\nConducted training programs, regulations briefing, and implementation guidelines for Senior Scouts." },
+        { org:"Student Council", role:"member of the Ministry of Communication and Information", start:"Jan 2021", end:"Jan 2022", cert:"", summary:"An organization similar to the Student Council (OSIS) at Citra Islami High School.\nSupervised operational plans under the publication and academic documentation division." }
+      ],
+      education: [
+        { school:"Universitas Islam Indonesia", degree:"Bachelor of Informatics, 3.34/4.00", start:"Aug 2023", end:"Aug 2027 (Expected)", location:"Ngemplak, Sleman, Yogyakarta", cert:"", summary:"• 1st place (Gold Medal Award) and Diamond Award (Best of the Best) for 'Gemah' (Business Capital Movement) project at the INDES Competition, Universiti Teknologi MARA (UiTM)\n• 3rd place in the national Airnology 2.0 Competition, Electroscope division\n• Core Team Member (Creative Division) at GDGoC (Google Developer Groups on Campus)\n• Co-Founder of BEGIN (Board Enthusiasts' Group for Interactive Networking)" },
+        { school:"Nanjing Xiaozhuang University", degree:"Bachelor of Software Engineer, 4.26/5.00", start:"Sep 2025", end:"Jun 2027 (Expected)", location:"No.3601, Hongjing Avenue, Nanjing, JIANGSU", cert:"https://drive.google.com/file/d/1bGXOTx6joMgEy7PkwgpKsyZWc8MIR119/view?usp=sharing", summary:"" },
+        { school:"SMA Citra Islami", degree:"Senior High School, High School Diploma in Natural Sciences", start:"Jul 2020", end:"Jul 2023", location:"Kab.Tangerang, Banten", cert:"", summary:"• appointed as a member of the student council\n• appointed as head of scouting activities\n• appointed as a graphic design extracurricular teacher\n• appointed as the head of the graphic design club" }
+      ],
+      ach: [
+        { title:"Achievements (2024)", year:"2024", cert:"https://drive.google.com/file/d/1eUOwt-BnPCMKIPpw56iAH_KuhvW4MMr3/view?usp=drive_link", summary:"1st place (gold medal) INDES 2024 Competition or The 13th International Invention, Innovation & Design Competition 2024 at Universiti Teknologi MARA (UiTM)" },
+        { title:"Achievements (2024)", year:"2024", cert:"https://drive.google.com/file/d/1rj-MOMPlQxF5bhTDS2IqVUhPMq3i40n-/view?usp=drive_link", summary:"best of the best category (diamond award) INDES 2024 Competition or The 13th International Invention, Innovation & Design Competition 2024 at Universiti Teknologi MARA (UiTM)" },
+        { title:"Achievements (2023)", year:"2023", cert:"https://drive.google.com/file/d/1EkGb5EefMbj_p7oBv7hVR8Y_VX0hG6_Q/view?usp=drive_link", summary:"The Airnology 2.0 Competition at Airlangga University (Unair) is a competition organized by the Faculty of Advanced Technology and Multidisciplinary Studies (FTMM)." },
+        { title:"Bootcamp GDGoC UII - Instructor/Speaker (2024)", year:"2024", cert:"https://drive.google.com/file/d/1gLx1KAwQX9pKnEVZeccHMFKOGdSz_cwV/view?usp=drive_link", summary:"I served as an instructor/speaker in a bootcamp, delivering material on UI/UX Fundamentals and Testing & Portfolio Finalizations. I also received a certificate as proof of participation." },
+        { title:"Webinars Attended (2025)", year:"2025", cert:"https://drive.google.com/file/d/1Z91kd9gnoYg4SrQbAotJ0Ucv54t1F5Qb/view?usp=drive_link", summary:"Attended as a participant in the Web3 University Tour Yogyakarta, organized by Binance Academy, Tokocrypto, and Coinvestasi." }
+      ],
+      skills: ["React","JavaScript","TypeScript","Next.js","React Native","Kotlin","Node.js","Firebase","Tailwind CSS","Vite","Figma","UI/UX Design","Prototyping"],
+      proj: [
+        { name:"Hanzi Narrative", role:"Personal Project", link:"hanzi-narrative.vercel.app/landing", featured:true, tech:["React","Vite","CSS3","HTML5","JavaScript"], summary:"Interactive education on Hanzi characters (汉字) — history, writing structure, stroke-order animation, and HSK 1–6 material." },
+        { name:"SajiGo", role:"Personal Project", link:"saji-go.vercel.app", featured:true, tech:["React","Vite","JavaScript","CSS3","AI Analytics"], summary:"Restaurant order management — QR ordering, automated QRIS & e-wallet payments, and a realtime AI-based analytics dashboard." },
+        { name:"Focus Flow", role:"Personal Project", link:"mental-energy-coach.lovable.app", featured:false, tech:["React","TypeScript","Tailwind CSS","shadcn/ui","AI Integration"], summary:"AI-based cognitive-load manager — Mental Battery tracker, drag-and-drop calendar, AI Task Breakdown, and Pomodoro Timer." },
+        { name:"Generate Idea", role:"Personal Project", link:"github.com/Fx-4/Generate-Idea", featured:false, tech:["React","JavaScript","CSS3","AI Integration","REST API"], summary:"AI platform for generating creative ideas — supports intuitive brainstorming and concept development." },
+        { name:"Smartlearn", role:"Group Project", link:"figma.com/proto/Baptis", featured:false, tech:["Figma","UI/UX Design","Prototyping","User Research"], summary:"Interactive learning platform with a modern, user-friendly design — intuitive interface and comprehensive learning features." },
+        { name:"Historical Jogja", role:"Group Project", link:"github.com/Fx-4/Historical-Jogja", featured:false, tech:["React","JavaScript","CSS3","API Integration","Google Maps"], summary:"Web app on the history and historical sites of Yogyakarta — interactive map, photo gallery, and per-location descriptions." },
+        { name:"Second Life", role:"Group Project", link:"github.com/Fx-4/Sulustara", featured:false, tech:["React Native","Firebase","Node.js","Express","MongoDB"], summary:"Eco-friendly second-hand marketplace — giving a second life to items that are still usable." },
+        { name:"Nutrikids", role:"Group Project", link:"github.com/Fx-4/Nutrikids", featured:false, tech:["Kotlin","Android Studio","Firebase","Material Design","REST API"], summary:"Child nutrition monitoring app — food tracking, healthy menu recommendations, and consultation with nutritionists." },
+        { name:"Veriflair", role:"Group Project", link:"github.com/Wibson27/VeriFlair", featured:false, tech:["Next.js","TypeScript","Blockchain","Web3","TailwindCSS"], summary:"Blockchain-based document verification to ensure the authenticity and integrity of digital documents." },
+        { name:"Tenang.in", role:"Group Project", link:"github.com/Wibson27/Tenang.in", featured:false, tech:["React","Node.js","PostgreSQL","Socket.io","Redux"], summary:"Mental health platform — online counseling, guided meditation, mood tracking, and educational articles." }
+      ]
+    };
+  }
+
+  var state = load();
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORE);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        parsed.lang = "en"; // Force English
+        if (parsed.usingSample) return sampleData("en");
+        var base = blank();
+        var merged = Object.assign(base, parsed);
+        ["work", "org", "education", "ach", "skills", "proj"].forEach(function (k) {
+          if (!Array.isArray(merged[k])) merged[k] = [];
+        });
+        return merged;
+      }
+    } catch (e) {}
+    return sampleData("en");
+  }
+  var saveTimer = null;
+  function save() { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {} var t = document.getElementById("saveText"); if (t) t.textContent = T("saved"); }
+  function scheduleSave() { var t = document.getElementById("saveText"); if (t) t.textContent = T("saving"); clearTimeout(saveTimer); saveTimer = setTimeout(save, 400); }
+  function touched() { state.usingSample = false; }
+
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]; }); }
+  function el(html) { var d = document.createElement("div"); d.innerHTML = html.trim(); return d.firstChild; }
+  function href(url, type) { if (!url) return "#"; if (type === "mail") return "mailto:" + url; if (type === "tel") return "tel:" + url.replace(/\s/g, ""); return /^https?:\/\//.test(url) ? url : "https://" + url; }
+  function short(url) { return String(url || "").replace(/^https?:\/\/(www\.)?/, ""); }
+  function period(a, b) { a = (a || "").trim(); b = (b || "").trim(); if (a && b) return a + " — " + b; return a || b || ""; }
+  function initials(name) { var p = (name || "").trim().split(/\s+/).filter(Boolean); if (!p.length) return "•"; return (p[0][0] + (p.length > 1 ? p[p.length - 1][0] : "")).toUpperCase(); }
+  function certCheck(url) {
+    if (!url) return "";
+    if (state.theme === "haikal") {
+      return '<a class="cert-check-haikal" href="' + esc(href(url)) + '" target="_blank" rel="noopener" title="' + esc(T("certTitle")) + '" aria-label="' + esc(T("certTitle")) + '"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#0657a9" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-left: 4px; margin-right: 4px;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></a>';
+    }
+    return '<a class="cert-check" href="' + esc(href(url)) + '" target="_blank" rel="noopener" title="' + esc(T("certTitle")) + '" aria-label="' + esc(T("certTitle")) + '">' + IC.check + '</a>';
+  }
+
+  function renderHaikalDesc(summary, isOrg) {
+    if (!summary) return "";
+    var lines = summary.split("\n");
+    var html = "";
+    lines.forEach(function (line, idx) {
+      line = line.trim();
+      if (!line) return;
+      var isBullet = false;
+      if (line.indexOf("•") === 0 || line.indexOf("-") === 0 || line.indexOf("*") === 0) {
+        isBullet = true;
+        line = line.substring(1).trim();
+      } else if (idx > 0 || !isOrg) {
+        isBullet = true;
+      }
+      if (isBullet) {
+        html += '<div class="r-bullet"><span class="bullet-sq"></span><span class="bullet-text">' + esc(line) + "</span></div>";
+      } else {
+        html += '<div class="r-org-desc">' + esc(line) + "</div>";
+      }
+    });
+    return html;
+  }
+
+  function getPhotoBgValue() {
+    var bg = state.photoBg || "transparent";
+    if (bg === "white") return "#ffffff";
+    if (bg === "muted") return "hsl(var(--muted))";
+    return "transparent";
+  }
+
+  // ---------- Render preview ----------
+  function renderPreview() {
+    var s = state, useIcons = s.theme === "modern" || s.theme === "sidebar";
+    function cItem(icon, label, url, ext) { var inner = (useIcons ? icon : "") + esc(label); if (url) return '<a href="' + esc(url) + '"' + (ext ? ' target="_blank" rel="noopener"' : "") + '>' + inner + "</a>"; return "<span>" + inner + "</span>"; }
+    var contact = [];
+    if (s.location) contact.push(cItem(IC.pin, s.location, "", false));
+    if (s.email) contact.push(cItem(IC.mail, s.email, href(s.email, "mail"), false));
+    if (s.phone) contact.push(cItem(IC.phone, s.phone, href(s.phone, "tel"), false));
+    if (s.linkedin) contact.push(cItem(IC.linkedin, short(s.linkedin), href(s.linkedin), true));
+    if (s.github) contact.push(cItem(IC.github, short(s.github), href(s.github), true));
+    if (s.instagram) contact.push(cItem(IC.instagram, short(s.instagram), href(s.instagram), true));
+    if (s.website) contact.push(cItem(IC.web, short(s.website), href(s.website), true));
+
+    var av = s.photo ? '<img class="r-photo" src="' + esc(s.photo) + '" alt="" style="background-color: ' + getPhotoBgValue() + '; border-color: ' + (getPhotoBgValue() === 'transparent' ? 'transparent' : 'hsl(var(--border))') + ';">' : '<div class="r-avatar">' + initials(s.name) + "</div>";
+    var isAts = s.theme === "ats" || s.theme === "ats-bold";
+    var html = "";
+
+    if (s.theme === "haikal") {
+      // Haikal's PDF Layout
+      // 1. Header: Photo (left, 80x80px), Name and info (right)
+      html += '<header class="r-head">' + av;
+      html += '<div class="info">';
+      html += '<div class="r-name">' + (esc(s.name) || "Name") + "</div>";
+      if (s.role) html += '<div class="r-role">' + esc(s.role) + "</div>";
+      if (s.about) html += '<p class="r-about">' + esc(s.about) + "</p>";
+      if (contact.length) html += '<div class="r-contact">' + contact.join('<span class="sep">|</span>') + "</div>";
+      html += "</div></header>";
+
+      // 2. Education Level
+      if (s.education && s.education.length) {
+        html += '<section class="r-section"><h2>Education Level</h2>';
+        s.education.forEach(function (e) {
+          html += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(e.school) || "—") + '<span class="location">' + (e.location ? " - " + esc(e.location) : "") + "</span>" + certCheck(e.cert) + "</div>";
+          html += '<div class="r-period">' + esc(period(e.start, e.end)) + "</div></div>";
+          if (e.degree) html += '<div class="r-role">' + esc(e.degree) + "</div>";
+          if (e.summary) html += '<div class="r-desc">' + renderHaikalDesc(e.summary, false) + "</div>";
+          html += "</div>";
+        });
+        html += "</section>";
+      }
+
+      // 3. Organisational Experience
+      if (s.org && s.org.length) {
+        html += '<section class="r-section"><h2>Organisational Experience</h2>';
+        s.org.forEach(function (o) {
+          html += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(o.org) || "—") + '<span class="location">' + (o.location ? " - " + esc(o.location) : "") + "</span>" + certCheck(o.cert) + "</div>";
+          html += '<div class="r-period">' + esc(period(o.start, o.end)) + "</div></div>";
+          if (o.role) html += '<div class="r-role">' + esc(o.role) + "</div>";
+          if (o.summary) html += '<div class="r-desc">' + renderHaikalDesc(o.summary, true) + "</div>";
+          html += "</div>";
+        });
+        html += "</section>";
+      }
+
+      // 4. Skills, Achievements & Other Experience
+      var hasSkills = s.skills && s.skills.length;
+      var hasProjects = s.proj && s.proj.length;
+      var hasAchievements = s.ach && s.ach.length;
+      
+      if (hasSkills || hasProjects || hasAchievements) {
+        html += '<section class="r-section"><h2>Skills, Achievements & Other Experience</h2>';
+        
+        if (hasSkills) {
+          html += '<div class="r-bullet"><span class="bullet-sq"></span><span class="bullet-text"><strong>Skills:</strong> ' + s.skills.map(esc).join(", ") + '</span></div>';
+        }
+        
+        if (hasProjects) {
+          s.proj.forEach(function (p) {
+            var projTitle = '<strong>' + (esc(p.name) || "—") + '</strong>';
+            if (p.role) projTitle += ' (' + esc(p.role) + ')';
+            if (p.link) projTitle += certCheck(p.link);
+            
+            var projText = projTitle + ': ' + esc(p.summary || "");
+            if (p.tech && p.tech.length) {
+              projText += ' [Tech: ' + p.tech.map(esc).join(", ") + ']';
+            }
+            html += '<div class="r-bullet"><span class="bullet-sq"></span><span class="bullet-text">' + projText + '</span></div>';
+          });
+        }
+        
+        if (hasAchievements) {
+          s.ach.forEach(function (a) {
+            var achTitle = '<strong>' + (esc(a.title) || "—") + '</strong>';
+            if (a.cert) achTitle += certCheck(a.cert);
+            if (a.year) achTitle += ' (' + esc(a.year) + ')';
+            
+            var achText = achTitle + ': ' + esc(a.summary || "");
+            html += '<div class="r-bullet"><span class="bullet-sq"></span><span class="bullet-text">' + achText + '</span></div>';
+          });
+        }
+        
+        html += "</section>";
+      }
+    } else if (s.theme === "sidebar") {
+      var left = "";
+      left += '<div style="text-align: center; display: flex; flex-direction: column; align-items: center; width: 100%;">' + av + "</div>";
+      left += '<div class="r-side-name">' + (esc(s.name) || "Name") + "</div>";
+      if (s.role) left += '<div class="r-side-role">' + esc(s.role) + "</div>";
+      if (s.about) left += '<p class="r-side-about">' + esc(s.about) + "</p>";
+      if (contact.length) {
+        left += '<section class="r-side-section"><h3>Contact</h3><div class="r-side-contact">' + contact.join("") + "</div></section>";
+      }
+      if (s.skills.length) {
+        left += '<section class="r-side-section"><h3>' + esc(T("secSkill")) + '</h3><div class="r-skill-grid">' + s.skills.map(function (k) { return '<span class="r-badge">' + esc(k) + "</span>"; }).join("") + "</div></section>";
+      }
+
+      var right = "";
+
+      if (s.org.length) {
+        right += '<section class="r-section"><h2>' + esc(T("secOrg")) + "</h2>";
+        s.org.forEach(function (o) {
+          right += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(o.role) || "—") + '<span class="at"> · ' + esc(o.org || "") + "</span>" + certCheck(o.cert) + "</div>";
+          right += '<div class="r-period">' + esc(period(o.start, o.end)) + "</div></div>";
+          if (o.summary) right += '<div class="r-desc">' + esc(o.summary) + "</div>";
+          right += "</div>";
+        });
+        right += "</section>";
+      }
+
+      if (s.education && s.education.length) {
+        right += '<section class="r-section"><h2>' + esc(T("secEdu")) + "</h2>";
+        s.education.forEach(function (e) {
+          right += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(e.school) || "—") + (e.degree ? '<span class="at"> · ' + esc(e.degree) + "</span>" : "") + certCheck(e.cert) + "</div>";
+          right += '<div class="r-period">' + esc(period(e.start, e.end)) + (e.location ? " · " + esc(e.location) : "") + "</div></div>";
+          if (e.summary) right += '<div class="r-desc">' + esc(e.summary) + "</div>";
+          right += "</div>";
+        });
+        right += "</section>";
+      }
+
+      if (s.proj.length) {
+        var projs = s.proj.slice().sort(function (a, b) { return (b.featured ? 1 : 0) - (a.featured ? 1 : 0); });
+        right += '<section class="r-section"><h2>' + esc(T("secProj")) + '</h2><div class="r-projects-grid">';
+        projs.forEach(function (p) {
+          right += '<div class="r-proj"><div class="r-entry-head"><div class="r-entry-title">' + (esc(p.name) || "—") + (p.link ? '<span class="link-dot"></span>' : "") + (p.featured ? '<span class="feat">' + esc(T("featuredTag")) + "</span>" : "") + "</div>";
+          if (p.role) right += '<div class="r-period" style="margin-top:2px">' + esc(p.role) + "</div>";
+          else if (p.link) right += '<div class="r-period" style="margin-top:2px">' + esc(short(p.link)) + "</div>";
+          right += "</div>";
+          if (p.summary) right += '<div class="r-desc">' + esc(p.summary) + "</div>";
+          if (p.tech && p.tech.length) right += '<div class="r-badges">' + p.tech.map(function (t) { return '<span class="r-badge">' + esc(t) + "</span>"; }).join("") + "</div>";
+          right += "</div>";
+        });
+        right += "</div></section>";
+      }
+
+      if (s.ach.length) {
+        right += '<section class="r-section"><h2>' + esc(T("secAch")) + "</h2>";
+        s.ach.forEach(function (a) {
+          right += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(a.title) || "—") + certCheck(a.cert) + '</div><div class="r-period">' + esc(a.year || "") + "</div></div>";
+          if (a.summary) right += '<div class="r-desc">' + esc(a.summary) + "</div>";
+          right += "</div>";
+        });
+        right += "</section>";
+      }
+
+      html = '<div class="r-sidebar-layout"><aside class="r-sidebar-left">' + left + '</aside><main class="r-sidebar-right">' + right + "</main></div>";
+    } else {
+      // Standard single column
+      html += '<header class="r-head"><div class="info">';
+      html += '<div class="r-name">' + (esc(s.name) || "Name") + "</div>";
+      if (s.role) html += '<div class="r-role">' + esc(s.role) + "</div>";
+      if (s.about) html += '<p class="r-about">' + esc(s.about) + "</p>";
+      if (contact.length) html += '<div class="r-contact">' + (useIcons ? contact.join("") : contact.join('<span class="sep">|</span>')) + "</div>";
+      html += "</div>" + av + "</header>";
+
+
+
+      if (s.org.length) {
+        html += '<section class="r-section"><h2>' + esc(T("secOrg")) + "</h2>";
+        s.org.forEach(function (o) {
+          html += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(o.role) || "—") + '<span class="at"> · ' + esc(o.org || "") + "</span>" + certCheck(o.cert) + "</div>";
+          html += '<div class="r-period">' + esc(period(o.start, o.end)) + "</div></div>";
+          if (o.summary) html += '<div class="r-desc">' + esc(o.summary) + "</div>";
+          html += "</div>";
+        });
+        html += "</section>";
+      }
+
+      if (s.education && s.education.length) {
+        html += '<section class="r-section"><h2>' + esc(T("secEdu")) + "</h2>";
+        s.education.forEach(function (e) {
+          html += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(e.school) || "—") + (e.degree ? '<span class="at"> · ' + esc(e.degree) + "</span>" : "") + certCheck(e.cert) + "</div>";
+          html += '<div class="r-period">' + esc(period(e.start, e.end)) + (e.location ? " · " + esc(e.location) : "") + "</div></div>";
+          if (e.summary) html += '<div class="r-desc">' + esc(e.summary) + "</div>";
+          html += "</div>";
+        });
+        html += "</section>";
+      }
+
+      if (s.proj.length) {
+        var projs = s.proj.slice().sort(function (a, b) { return (b.featured ? 1 : 0) - (a.featured ? 1 : 0); });
+        html += '<section class="r-section"><h2>' + esc(T("secProj")) + '</h2><div class="r-projects-grid">';
+        projs.forEach(function (p) {
+          if (isAts) {
+            html += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(p.name) || "—") + (p.link ? ' · <a href="' + esc(href(p.link)) + '" target="_blank" rel="noopener">' + esc(short(p.link)) + '</a>' : "") + (p.role ? ' <span style="font-weight: 500; font-size: 11.5px; color: hsl(var(--muted-foreground));">(' + esc(p.role) + ')</span>' : "") + "</div></div>";
+            if (p.summary) html += '<div class="r-desc">' + esc(p.summary) + "</div>";
+            if (p.tech && p.tech.length) html += '<div class="r-desc" style="margin-top: 3px; font-weight: 500;">Technologies: ' + p.tech.map(esc).join(", ") + "</div>";
+            html += "</div>";
+          } else {
+            html += '<div class="r-proj"><div class="r-entry-head"><div class="r-entry-title">' + (esc(p.name) || "—") + (p.link ? '<span class="link-dot"></span>' : "") + (p.featured ? '<span class="feat">' + esc(T("featuredTag")) + "</span>" : "") + "</div>";
+            if (p.role) html += '<div class="r-period" style="margin-top:2px">' + esc(p.role) + "</div>";
+            else if (p.link) html += '<div class="r-period" style="margin-top:2px">' + esc(short(p.link)) + "</div>";
+            html += "</div>";
+            if (p.summary) html += '<div class="r-desc">' + esc(p.summary) + "</div>";
+            if (p.tech && p.tech.length) html += '<div class="r-badges">' + p.tech.map(function (t) { return '<span class="r-badge">' + esc(t) + "</span>"; }).join("") + "</div>";
+            html += "</div>";
+          }
+        });
+        html += "</div></section>";
+      }
+
+      if (s.skills.length) {
+        if (isAts) {
+          html += '<section class="r-section"><h2>' + esc(T("secSkill")) + '</h2><div class="r-skill-list">' + s.skills.map(esc).join(", ") + "</div></section>";
+        } else {
+          html += '<section class="r-section"><h2>' + esc(T("secSkill")) + '</h2><div class="r-skill-grid">' + s.skills.map(function (k) { return '<span class="r-badge">' + esc(k) + "</span>"; }).join("") + "</div></section>";
+        }
+      }
+
+      if (s.ach.length) {
+        html += '<section class="r-section"><h2>' + esc(T("secAch")) + "</h2>";
+        s.ach.forEach(function (a) {
+          html += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(a.title) || "—") + certCheck(a.cert) + '</div><div class="r-period">' + esc(a.year || "") + "</div></div>";
+          if (a.summary) html += '<div class="r-desc">' + esc(a.summary) + "</div>";
+          html += "</div>";
+        });
+        html += "</section>";
+      }
+    }
+
+    document.getElementById("page").innerHTML = html;
+  }
+
+  // ---------- Editor lists ----------
+  function bindInput(node, obj, key) { node.addEventListener("input", function () { obj[key] = node.value; touched(); renderPreview(); scheduleSave(); }); }
+  function btnIcon(txt) { var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-icon btn-sm btn-ghost"; b.textContent = txt; return b; }
+  function swap(a, i, j) { var t = a[i]; a[i] = a[j]; a[j] = t; }
+
+  function inputField(parent, label, obj, key, opts) {
+    opts = opts || {};
+    var wrap = document.createElement("div");
+    wrap.className = "field" + (opts.mono ? " field-mono" : "") + (opts.row2 ? " row2" : "");
+    if (opts.pair) {
+      wrap.className += " row2";
+      wrap.innerHTML = '<div><label class="lab">' + esc(label) + '</label><input/></div><div><label class="lab">' + esc(opts.pair.label) + '</label><input/></div>';
+      var ins = wrap.querySelectorAll("input");
+      ins[0].value = obj[key] || ""; if (opts.ph) ins[0].placeholder = opts.ph;
+      ins[1].value = obj[opts.pair.key] || ""; if (opts.pair.ph) ins[1].placeholder = opts.pair.ph;
+      bindInput(ins[0], obj, key); bindInput(ins[1], obj, opts.pair.key);
+      parent.appendChild(wrap); return;
+    }
+    var tag = opts.area ? "textarea" : "input";
+    if (opts.area && opts.ai) {
+      wrap.innerHTML = '<div class="field-head"><label class="lab">' + esc(label) + '</label><button type="button" class="ai-btn" data-ai-kind="' + esc(opts.ai) + '">✨ AI improve</button></div><' + tag + "></" + tag + ">";
+    } else {
+      wrap.innerHTML = '<label class="lab">' + esc(label) + "</label><" + tag + "></" + tag + ">";
+    }
+    var input = wrap.querySelector(tag);
+    input.value = obj[key] || ""; if (opts.ph) input.placeholder = opts.ph;
+    bindInput(input, obj, key); parent.appendChild(wrap);
+    if (opts.area && opts.ai) {
+      var aiBtn = wrap.querySelector(".ai-btn");
+      aiBtn.addEventListener("click", function () { runAiAssist(aiBtn, input, obj, key, opts.ai); });
+    }
+  }
+  function checkField(parent, label, obj, key) {
+    var w = document.createElement("div"); w.className = "field";
+    w.innerHTML = '<label class="chk"><input type="checkbox"/> <span>' + esc(label) + "</span></label>";
+    var cb = w.querySelector("input"); cb.checked = !!obj[key];
+    cb.addEventListener("change", function () { obj[key] = cb.checked; touched(); renderPreview(); scheduleSave(); });
+    parent.appendChild(w);
+  }
+  function badgeEditor(parent, label, obj, key, ph) {
+    var wrap = document.createElement("div"); wrap.className = "field";
+    wrap.innerHTML = '<label class="lab">' + esc(label) + "</label>";
+    var box = document.createElement("div"); box.className = "chips-input"; obj[key] = obj[key] || [];
+    function paint() {
+      box.querySelectorAll(".chip").forEach(function (c) { c.remove(); });
+      obj[key].forEach(function (t, i) {
+        var chip = el('<span class="chip">' + esc(t) + '<button type="button">×</button></span>');
+        chip.querySelector("button").addEventListener("click", function () { obj[key].splice(i, 1); touched(); paint(); renderPreview(); scheduleSave(); });
+        box.insertBefore(chip, inp);
+      });
+    }
+    var inp = document.createElement("input"); inp.placeholder = ph || "";
+    inp.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === ",") { e.preventDefault(); var v = inp.value.trim().replace(/,$/, ""); if (v) { obj[key].push(v); inp.value = ""; touched(); paint(); renderPreview(); scheduleSave(); } }
+      else if (e.key === "Backspace" && !inp.value && obj[key].length) { obj[key].pop(); touched(); paint(); renderPreview(); scheduleSave(); }
+    });
+    box.appendChild(inp); wrap.appendChild(box); parent.appendChild(wrap); paint();
+  }
+
+  function listManager(opts) {
+    function render() {
+      var mount = document.getElementById(opts.mount); mount.innerHTML = "";
+      var arr = state[opts.key];
+      if (opts.countEl) document.getElementById(opts.countEl).textContent = arr.length ? arr.length + " " + T("itemWord") : T("emptyWord");
+      arr.forEach(function (item, i) {
+        var card = document.createElement("div"); card.className = "item";
+        var head = document.createElement("div"); head.className = "item-head";
+        head.innerHTML = '<span class="idx">' + esc(T(opts.labelKey)) + " " + (i + 1) + "</span>";
+        var tools = document.createElement("div"); tools.className = "item-tools";
+        var up = btnIcon("↑"); up.disabled = i === 0; up.addEventListener("click", function () { swap(arr, i, i - 1); touched(); render(); renderPreview(); scheduleSave(); });
+        var dn = btnIcon("↓"); dn.disabled = i === arr.length - 1; dn.addEventListener("click", function () { swap(arr, i, i + 1); touched(); render(); renderPreview(); scheduleSave(); });
+        var rm = btnIcon("✕"); rm.addEventListener("click", function () { arr.splice(i, 1); touched(); render(); renderPreview(); scheduleSave(); });
+        tools.appendChild(up); tools.appendChild(dn); tools.appendChild(rm); head.appendChild(tools); card.appendChild(head);
+        opts.fields(item, card); mount.appendChild(card);
+      });
+    }
+    return { render: render };
+  }
+
+  var orgMgr = listManager({ key:"org", mount:"list-org", countEl:"cnt-org", labelKey:"lOrg", fields:function (o, c) {
+    inputField(c, T("oRole"), o, "role"); inputField(c, T("oOrg"), o, "org");
+    inputField(c, T("mStart"), o, "start", { mono:true, pair:{ label:T("mEnd"), key:"end" } });
+    inputField(c, T("oDesc"), o, "summary", { area:true, ai:"org" }); inputField(c, T("oCert"), o, "cert", { mono:true, ph:"https://drive.google.com/..." });
+  }});
+  var eduMgr = listManager({ key:"education", mount:"list-edu", countEl:"cnt-edu", labelKey:"lEdu", fields:function (e, c) {
+    inputField(c, T("eSchool"), e, "school"); inputField(c, T("eDegree"), e, "degree");
+    inputField(c, T("mStart"), e, "start", { mono:true, pair:{ label:T("mEnd"), key:"end" } });
+    inputField(c, T("mLoc"), e, "location"); inputField(c, T("eNote"), e, "summary", { area:true, ai:"edu" }); inputField(c, T("eCert"), e, "cert", { mono:true, ph:"https://drive.google.com/..." });
+  }});
+  var achMgr = listManager({ key:"ach", mount:"list-ach", countEl:"cnt-ach", labelKey:"lAch", fields:function (a, c) {
+    inputField(c, T("aTitle"), a, "title"); inputField(c, T("aYear"), a, "year", { mono:true });
+    inputField(c, T("aDesc"), a, "summary", { area:true, ai:"ach" }); inputField(c, T("aCert"), a, "cert", { mono:true, ph:"https://drive.google.com/..." });
+  }});
+  var projMgr = listManager({ key:"proj", mount:"list-proj", countEl:"cnt-proj", labelKey:"lProj", fields:function (p, c) {
+    inputField(c, T("pName"), p, "name"); inputField(c, T("pRole"), p, "role", { ph: "e.g. Personal Project / Group Project" });
+    inputField(c, T("pLink"), p, "link", { mono:true, ph:"nama.vercel.app" });
+    inputField(c, T("pDesc"), p, "summary", { area:true, ai:"proj" }); badgeEditor(c, T("pTech"), p, "tech", "React"); checkField(c, T("pFeat"), p, "featured");
+  }});
+  var MGR = { org:orgMgr, education:eduMgr, ach:achMgr, proj:projMgr };
+  function renderAllLists() { orgMgr.render(); eduMgr.render(); achMgr.render(); projMgr.render(); }
+
+  var ADD_DEFAULT = {
+    org:function () { return { org:"", role:"", start:"", end:"", cert:"", summary:"" }; },
+    education:function () { return { school:"", degree:"", start:"", end:"", location:"", cert:"", summary:"" }; },
+    ach:function () { return { title:"", year:"", cert:"", summary:"" }; },
+    proj:function () { return { name:"", role:"", link:"", summary:"", tech:[], featured:false }; }
+  };
+  document.querySelectorAll("[data-add]").forEach(function (b) { b.addEventListener("click", function () { var k = b.getAttribute("data-add"); state[k].push(ADD_DEFAULT[k]()); touched(); MGR[k].render(); renderPreview(); scheduleSave(); }); });
+
+  function bindProfile() {
+    document.querySelectorAll("[data-bind]").forEach(function (input) {
+      var key = input.getAttribute("data-bind"); input.value = state[key] || "";
+      input.addEventListener("input", function () { state[key] = input.value; touched(); renderPreview(); scheduleSave(); });
+    });
+    var sel = document.getElementById("photoBgSel");
+    if (sel) {
+      sel.addEventListener("change", function () {
+        state.photoBg = sel.value;
+        touched();
+        updatePhotoThumb();
+        renderPreview();
+        scheduleSave();
+      });
+    }
+  }
+  function refreshProfileValues() { document.querySelectorAll("[data-bind]").forEach(function (i) { i.value = state[i.getAttribute("data-bind")] || ""; }); }
+
+  function bindSkills() {
+    var box = document.getElementById("skills-input"), entry = document.getElementById("skill-entry");
+    function paint() {
+      box.querySelectorAll(".chip").forEach(function (c) { c.remove(); });
+      state.skills.forEach(function (t, i) {
+        var chip = el('<span class="chip">' + esc(t) + '<button type="button">×</button></span>');
+        chip.querySelector("button").addEventListener("click", function () { state.skills.splice(i, 1); touched(); paint(); renderPreview(); scheduleSave(); });
+        box.insertBefore(chip, entry);
+      });
+    }
+    entry.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === ",") { e.preventDefault(); var v = entry.value.trim().replace(/,$/, ""); if (v) { state.skills.push(v); entry.value = ""; touched(); paint(); renderPreview(); scheduleSave(); } }
+      else if (e.key === "Backspace" && !entry.value && state.skills.length) { state.skills.pop(); touched(); paint(); renderPreview(); scheduleSave(); }
+    });
+    entry.setAttribute("placeholder", state.lang === "en" ? "e.g. TypeScript" : "cth. TypeScript");
+    box.__paint = paint; paint();
+  }
+
+  // ---------- Photo upload (downscaled to keep storage small) ----------
+  function setPhoto(dataUrl) { state.photo = dataUrl || ""; touched(); updatePhotoThumb(); renderPreview(); scheduleSave(); }
+  function updatePhotoThumb() {
+    var t = document.getElementById("photoThumb");
+    var bgGroup = document.getElementById("photoBgGroup");
+    var sel = document.getElementById("photoBgSel");
+    t.className = "photo-thumb";
+    t.style.backgroundColor = "";
+    if (state.photo) {
+      var bgVal = state.photoBg || "transparent";
+      if (bgVal === "transparent") {
+        t.classList.add("bg-checkerboard");
+      } else if (bgVal === "white") {
+        t.style.backgroundColor = "#ffffff";
+      } else if (bgVal === "muted") {
+        t.style.backgroundColor = "hsl(var(--muted))";
+      }
+      t.innerHTML = '<img src="' + esc(state.photo) + '" alt="" style="background-color: ' + getPhotoBgValue() + ';">';
+      if (bgGroup) bgGroup.style.display = "flex";
+    } else {
+      t.innerHTML = "—";
+      if (bgGroup) bgGroup.style.display = "none";
+    }
+    if (sel) {
+      sel.value = state.photoBg || "transparent";
+    }
+  }
+  document.getElementById("photoInput").addEventListener("change", function (e) {
+    var f = e.target.files && e.target.files[0]; if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      var img = new Image();
+      img.onload = function () {
+        var max = 400, w = img.width, h = img.height, sc = Math.min(1, max / Math.max(w, h));
+        var cv = document.createElement("canvas"); cv.width = Math.round(w * sc); cv.height = Math.round(h * sc);
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        try { setPhoto(cv.toDataURL("image/png")); } catch (_) { setPhoto(ev.target.result); }
+      };
+      img.onerror = function () { setPhoto(ev.target.result); };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(f); e.target.value = "";
+  });
+  document.getElementById("photoRemove").addEventListener("click", function () { setPhoto(""); });
+
+  // ---------- Steps ----------
+  function goStep(n) {
+    document.querySelectorAll(".step-tab").forEach(function (t) { t.setAttribute("aria-selected", String(+t.getAttribute("data-step") === n)); });
+    document.querySelectorAll(".step-panel").forEach(function (p) { p.classList.toggle("active", +p.getAttribute("data-panel") === n); });
+    document.querySelector(".editor-scroll").scrollTop = 0;
+  }
+  document.querySelectorAll(".step-tab").forEach(function (t) { t.addEventListener("click", function () { goStep(+t.getAttribute("data-step")); }); });
+  document.querySelectorAll("[data-goto]").forEach(function (b) { b.addEventListener("click", function () { goStep(+b.getAttribute("data-goto")); }); });
+
+  // ---------- Language + theme ----------
+  function applyLangChrome() {
+    var d = L.en;
+    document.querySelectorAll("[data-i18n]").forEach(function (elm) { var k = elm.getAttribute("data-i18n"); if (d[k] != null) elm.textContent = d[k]; });
+    document.documentElement.lang = "en";
+    var se = document.getElementById("skill-entry"); if (se) se.setAttribute("placeholder", "e.g. TypeScript");
+  }
+
+  function applyTheme() { document.getElementById("page").className = "page theme-" + state.theme; document.getElementById("themeSel").value = state.theme; }
+  document.getElementById("themeSel").addEventListener("change", function (e) { state.theme = e.target.value; applyTheme(); renderPreview(); scheduleSave(); });
+
+  // ---------- Toolbar ----------
+  function toast(msg) { var t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove("show"); }, 2600); }
+
+  // ---------- AI assist ----------
+  function runAiAssist(btn, input, obj, key, kind) {
+    var text = (input.value || "").trim();
+    if (!text) { toast("Write something first, then let AI improve it."); return; }
+    if (btn.disabled) return;
+    btn.disabled = true; var orig = btn.textContent; btn.textContent = "✨ …";
+    fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: kind, text: text })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) { return { ok: r.ok, data: data }; });
+    }).then(function (res) {
+      if (!res.ok || !res.data || !res.data.result) { toast((res.data && res.data.error) || "AI request failed"); return; }
+      input.value = res.data.result; obj[key] = res.data.result; touched(); renderPreview(); scheduleSave();
+      toast("Improved with AI");
+    }).catch(function () { toast("AI request failed — check your connection"); })
+      .then(function () { btn.disabled = false; btn.textContent = orig; });
+  }
+  var aiAboutBtn = document.getElementById("aiAboutBtn");
+  if (aiAboutBtn) aiAboutBtn.addEventListener("click", function () {
+    var ta = document.querySelector('[data-bind="about"]');
+    runAiAssist(aiAboutBtn, ta, state, "about", "summary");
+  });
+
+  // ---------- Import existing CV (PDF -> AI parse -> fill form) ----------
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+
+  function extractPdfText(file) {
+    return file.arrayBuffer().then(function (buf) {
+      return pdfjsLib.getDocument({ data: buf }).promise;
+    }).then(function (pdf) {
+      var text = "", pageNum = 1;
+      function nextPage() {
+        if (pageNum > pdf.numPages || text.length > 15000) return Promise.resolve(text);
+        return pdf.getPage(pageNum).then(function (page) {
+          return page.getTextContent();
+        }).then(function (content) {
+          text += content.items.map(function (it) { return it.str; }).join(" ") + "\n";
+          pageNum++;
+          return nextPage();
+        });
+      }
+      return nextPage();
+    });
+  }
+
+  function mergeParsedResume(data) {
+    var fields = ["name", "role", "about", "location", "email", "phone", "linkedin", "github", "instagram", "website"];
+    fields.forEach(function (k) { if (typeof data[k] === "string" && data[k].trim()) state[k] = data[k].trim(); });
+    function nonEmptyArr(a) { return Array.isArray(a) && a.length; }
+    if (nonEmptyArr(data.org)) state.org = data.org;
+    if (nonEmptyArr(data.education)) state.education = data.education;
+    if (nonEmptyArr(data.ach)) state.ach = data.ach;
+    if (nonEmptyArr(data.skills)) state.skills = data.skills.filter(function (s) { return typeof s === "string" && s.trim(); });
+    if (nonEmptyArr(data.proj)) {
+      state.proj = data.proj.map(function (p) {
+        p.tech = Array.isArray(p.tech) ? p.tech : [];
+        p.featured = !!p.featured;
+        return p;
+      });
+    }
+  }
+
+  function handleCvFile(file) {
+    if (!file) return;
+    if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name || "")) { toast("Please upload a PDF file"); return; }
+    var dz = document.getElementById("cvDropzone");
+    var sub = dz.querySelector(".dropzone-sub");
+    var origSub = sub.textContent;
+    dz.classList.add("busy");
+    sub.textContent = "Reading PDF…";
+    extractPdfText(file).then(function (text) {
+      text = (text || "").trim();
+      if (!text) throw new Error("Could not read text from this PDF (it may be a scanned image).");
+      sub.textContent = "Analyzing with AI…";
+      return fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "parse", text: text.slice(0, 12000) })
+      });
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) { return { ok: r.ok, data: data }; });
+    }).then(function (res) {
+      if (!res.ok || !res.data || !res.data.result) throw new Error((res.data && res.data.error) || "AI could not parse this CV");
+      mergeParsedResume(res.data.result);
+      touched(); state.usingSample = false; rebindAll();
+      toast("CV imported — check the fields and adjust as needed");
+    }).catch(function (err) {
+      toast((err && err.message) || "Failed to import CV");
+    }).then(function () {
+      dz.classList.remove("busy"); sub.textContent = origSub;
+    });
+  }
+
+  var cvDropzone = document.getElementById("cvDropzone");
+  var cvFileInput = document.getElementById("cvFileInput");
+  if (cvDropzone && cvFileInput) {
+    cvDropzone.addEventListener("click", function () { cvFileInput.click(); });
+    cvDropzone.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); cvFileInput.click(); } });
+    cvFileInput.addEventListener("change", function (e) { handleCvFile(e.target.files && e.target.files[0]); e.target.value = ""; });
+    ["dragenter", "dragover"].forEach(function (evt) {
+      cvDropzone.addEventListener(evt, function (e) { e.preventDefault(); e.stopPropagation(); cvDropzone.classList.add("dragover"); });
+    });
+    ["dragleave", "drop"].forEach(function (evt) {
+      cvDropzone.addEventListener(evt, function (e) { e.preventDefault(); e.stopPropagation(); cvDropzone.classList.remove("dragover"); });
+    });
+    cvDropzone.addEventListener("drop", function (e) {
+      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      handleCvFile(f);
+    });
+  }
+  function rebindAll() { refreshProfileValues(); renderAllLists(); if (document.getElementById("skills-input").__paint) document.getElementById("skills-input").__paint(); updatePhotoThumb(); applyLangChrome(); applyTheme(); renderPreview(); save(); }
+  var pb1 = document.getElementById("printBtn"); if (pb1) pb1.addEventListener("click", function () { window.focus(); window.print(); });
+  var pb2 = document.getElementById("printBtn2"); if (pb2) pb2.addEventListener("click", function () { window.focus(); window.print(); });
+  var pb3 = document.getElementById("printBtn3"); if (pb3) pb3.addEventListener("click", function () { window.focus(); window.print(); });
+  document.getElementById("loadSample").addEventListener("click", function () { var th = state.theme; state = sampleData(); state.theme = th; rebindAll(); toast(T("toastSample")); });
+  document.getElementById("resetBtn").addEventListener("click", function () { if (!confirm(T("confirmClear"))) return; var th = state.theme; state = blank(); state.theme = th; rebindAll(); toast(T("toastClear")); });
+
+  // ---------- Zoom ----------
+  var zoom = 1;
+  function applyZoom() { document.getElementById("scaler").style.transform = "scale(" + zoom + ")"; document.getElementById("zoomLabel").textContent = Math.round(zoom * 100) + "%"; }
+  function fitZoom() { var avail = document.querySelector(".preview").clientWidth - 56; var pageW = document.getElementById("page").offsetWidth || 793.7; zoom = Math.min(1, Math.max(0.4, avail / pageW)); applyZoom(); }
+  document.getElementById("zoomIn").addEventListener("click", function () { zoom = Math.min(1.6, zoom + 0.1); applyZoom(); });
+  document.getElementById("zoomOut").addEventListener("click", function () { zoom = Math.max(0.4, zoom - 0.1); applyZoom(); });
+
+  // Ctrl + Scroll Zoom Handler
+  window.addEventListener("wheel", function (e) {
+    if (e.ctrlKey) {
+      e.preventDefault();
+      var step = 0.05;
+      if (e.deltaY < 0) {
+        zoom = Math.min(1.6, zoom + step);
+      } else {
+        zoom = Math.max(0.4, zoom - step);
+      }
+      applyZoom();
+    }
+  }, { passive: false });
+
+  // ---------- Init ----------
+  bindProfile();
+  renderAllLists();
+  bindSkills();
+  updatePhotoThumb();
+  applyLangChrome();
+  applyTheme();
+  renderPreview();
+  fitZoom();
+})();
+</script>
+</body>
+</html>
