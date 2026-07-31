@@ -435,6 +435,13 @@
   .dropzone-sub { font-size: 11px; color: hsl(var(--muted-foreground)); margin-top: 4px; font-family: var(--font-mono); }
   .dropzone.busy { opacity: .65; pointer-events: none; }
 
+  .ai-budget { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; color: hsl(var(--muted-foreground)); background: hsl(var(--secondary)); border: 1px solid hsl(var(--border)); border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
+  .ai-budget::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: hsl(var(--green)); flex: none; }
+  .ai-budget.empty { color: hsl(0 72% 42%); }
+  .ai-budget.empty::before { background: hsl(0 72% 51%); }
+
+  body.ai-locked .ai-btn, body.ai-locked #cvDropzone { opacity: .45; pointer-events: none; }
+
   @media (max-width: 980px) { .app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; } .editor { border-right: 0; border-bottom: 1px solid hsl(var(--border)); max-height: 52vh; } }
 
   @media print {
@@ -461,6 +468,7 @@
       <div><b>CV Builder</b><br /><span>cvmaker · A4 · ATS</span></div>
     </div>
     <div class="topbar-actions">
+      <span class="ai-budget" id="aiBudgetBadge" title="AI usage limit on this device">✨ AI: —</span>
       <select class="ctrl" id="themeSel" aria-label="Theme">
         <option value="ats">ATS Classic</option>
         <option value="ats-bold">ATS Bold</option>
@@ -1218,8 +1226,73 @@
   // ---------- Toolbar ----------
   function toast(msg) { var t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove("show"); }, 2600); }
 
+  // ---------- AI usage budget (device-locked via localStorage) ----------
+  // Mirrors the server's per-IP limit so the UI can show "X left / resets in
+  // Yh" and lock the AI controls on THIS device the moment the budget hits
+  // zero, without waiting for a failed request. The server (api/ai.js) is
+  // still the source of truth; this is a client-side reflection of it.
+  var AI_BUDGET_KEY = "cvbuilder:ai:budget:v1";
+  var aiBudget = loadAiBudget();
+
+  function loadAiBudget() {
+    try {
+      var raw = localStorage.getItem(AI_BUDGET_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return { limit: null, remaining: null, resetAt: 0 };
+  }
+  function saveAiBudget(b) {
+    if (!b || typeof b.remaining !== "number" || typeof b.resetAt !== "number") return;
+    aiBudget = { limit: b.limit, remaining: b.remaining, resetAt: b.resetAt };
+    try { localStorage.setItem(AI_BUDGET_KEY, JSON.stringify(aiBudget)); } catch (e) {}
+    renderAiBudgetBadge();
+    applyAiLock();
+  }
+  function readBudgetFromResponse(r, data) {
+    var limit = parseInt(r.headers.get("X-RateLimit-Limit"), 10);
+    var remaining = parseInt(r.headers.get("X-RateLimit-Remaining"), 10);
+    var resetAt = parseInt(r.headers.get("X-RateLimit-Reset"), 10);
+    if (!isNaN(limit) && !isNaN(remaining) && !isNaN(resetAt)) { saveAiBudget({ limit: limit, remaining: remaining, resetAt: resetAt }); return; }
+    if (data && typeof data.remaining === "number" && typeof data.resetAt === "number") saveAiBudget(data);
+  }
+  function formatCountdown(ms) {
+    if (ms <= 0) return "a moment";
+    var h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
+    if (h > 0) return h + "h " + m + "m";
+    return Math.max(1, m) + "m";
+  }
+  function aiIsLocked() {
+    return aiBudget && aiBudget.remaining === 0 && Date.now() < aiBudget.resetAt;
+  }
+  function applyAiLock() {
+    document.body.classList.toggle("ai-locked", !!aiIsLocked());
+  }
+  function renderAiBudgetBadge() {
+    var el = document.getElementById("aiBudgetBadge");
+    if (!el) return;
+    if (aiBudget.remaining == null) { el.textContent = "✨ AI: —"; el.classList.remove("empty"); return; }
+    if (aiIsLocked()) {
+      el.textContent = "✨ AI: 0/" + aiBudget.limit + " · resets in " + formatCountdown(aiBudget.resetAt - Date.now());
+      el.classList.add("empty");
+    } else {
+      el.textContent = "✨ AI: " + Math.max(0, aiBudget.remaining) + "/" + aiBudget.limit + " left";
+      el.classList.remove("empty");
+    }
+  }
+  function fetchAiStatus() {
+    return fetch("/api/ai").then(function (r) {
+      return r.json().catch(function () { return null; }).then(function (data) { readBudgetFromResponse(r, data); });
+    }).catch(function () {});
+  }
+  renderAiBudgetBadge(); applyAiLock(); fetchAiStatus();
+  setInterval(function () {
+    renderAiBudgetBadge(); applyAiLock();
+    if (aiBudget && aiBudget.resetAt && Date.now() > aiBudget.resetAt) fetchAiStatus();
+  }, 30000);
+
   // ---------- AI assist ----------
   function runAiAssist(btn, input, obj, key, kind) {
+    if (aiIsLocked()) { toast("AI limit reached on this device — resets in " + formatCountdown(aiBudget.resetAt - Date.now())); return; }
     var text = (input.value || "").trim();
     if (!text) { toast("Write something first, then let AI improve it."); return; }
     if (btn.disabled) return;
@@ -1229,7 +1302,7 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ kind: kind, text: text })
     }).then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (data) { return { ok: r.ok, data: data }; });
+      return r.json().catch(function () { return {}; }).then(function (data) { readBudgetFromResponse(r, data); return { ok: r.ok, data: data }; });
     }).then(function (res) {
       if (!res.ok || !res.data || !res.data.result) { toast((res.data && res.data.error) || "AI request failed"); return; }
       input.value = res.data.result; obj[key] = res.data.result; touched(); renderPreview(); scheduleSave();
@@ -1286,6 +1359,7 @@
 
   function handleCvFile(file) {
     if (!file) return;
+    if (aiIsLocked()) { toast("AI limit reached on this device — resets in " + formatCountdown(aiBudget.resetAt - Date.now())); return; }
     if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name || "")) { toast("Please upload a PDF file"); return; }
     var dz = document.getElementById("cvDropzone");
     var sub = dz.querySelector(".dropzone-sub");
@@ -1302,7 +1376,7 @@
         body: JSON.stringify({ kind: "parse", text: text.slice(0, 12000) })
       });
     }).then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (data) { return { ok: r.ok, data: data }; });
+      return r.json().catch(function () { return {}; }).then(function (data) { readBudgetFromResponse(r, data); return { ok: r.ok, data: data }; });
     }).then(function (res) {
       if (!res.ok || !res.data || !res.data.result) throw new Error((res.data && res.data.error) || "AI could not parse this CV");
       mergeParsedResume(res.data.result);

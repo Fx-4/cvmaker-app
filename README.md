@@ -40,15 +40,26 @@ variables on the server only — the browser never sees them.
 
 ## Rate limiting
 
-`api/ai.js` limits each IP address to 8 AI requests per rolling 3-hour
-window, tracked in-memory inside the serverless function. This is a
-best-effort limit: because Vercel can run multiple instances of a function
-concurrently and instances are recycled over time, the real-world cap per
-user is approximate, not exact. It's meant to keep a free, login-less tool
-from being trivially abused — not as a strict quota.
+Each visitor gets **8 AI requests per rolling 3-hour window**, enforced two ways:
 
-For a stronger guarantee (e.g. if this gets real traffic), swap the in-memory
-`Map` in `api/ai.js` for a shared store such as
+- **Server-side, per IP** (`api/ai.js`): the source of truth. Tracked in an
+  in-memory `Map` inside the serverless function — a best-effort limit, since
+  Vercel can run multiple concurrent instances and recycle them over time, so
+  the real-world cap per IP is approximate, not exact.
+- **Client-side, per device** (`index.html`): the UI polls `GET /api/ai` on
+  load and after every AI call to read the current `limit`/`remaining`/`resetAt`,
+  shown as a badge in the top bar (e.g. "✨ AI: 3/8 left"). The result is
+  cached in `localStorage`, so once a device hits 0 it immediately disables
+  every AI button and the CV-import dropzone on that device — no need to wait
+  for a failed request. This is a UX lock, not a security boundary: it's tied
+  to `localStorage`, so clearing site data or using a private window resets
+  it (the server-side IP limit still applies underneath).
+
+Together this keeps a free, login-less tool from being trivially abused
+without requiring accounts — not a strict, unbypassable quota.
+
+For a stronger server-side guarantee (e.g. if this gets real traffic), swap
+the in-memory `Map` in `api/ai.js` for a shared store such as
 [Upstash Redis](https://upstash.com) or Vercel KV.
 
 ## Notes

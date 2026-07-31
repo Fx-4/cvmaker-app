@@ -41,18 +41,30 @@ function getClientIp(req) {
   return (req.socket && req.socket.remoteAddress) || "unknown";
 }
 
-function checkRateLimit(ip) {
+// Read-only: how much of the window is left, without spending any of it.
+// Lets the client show "X left / resets in Yh" on page load.
+function getStatus(ip) {
+  const now = Date.now();
+  const rec = hits.get(ip);
+  if (!rec || now > rec.resetAt) {
+    return { limit: MAX_REQUESTS, remaining: MAX_REQUESTS, resetAt: now + WINDOW_MS };
+  }
+  return { limit: MAX_REQUESTS, remaining: Math.max(0, MAX_REQUESTS - rec.count), resetAt: rec.resetAt };
+}
+
+// Spends one request from the window.
+function consume(ip) {
   const now = Date.now();
   const rec = hits.get(ip);
   if (!rec || now > rec.resetAt) {
     hits.set(ip, { count: 1, resetAt: now + WINDOW_MS });
-    return { allowed: true, remaining: MAX_REQUESTS - 1, resetAt: now + WINDOW_MS };
+    return { allowed: true, limit: MAX_REQUESTS, remaining: MAX_REQUESTS - 1, resetAt: now + WINDOW_MS };
   }
   if (rec.count >= MAX_REQUESTS) {
-    return { allowed: false, remaining: 0, resetAt: rec.resetAt };
+    return { allowed: false, limit: MAX_REQUESTS, remaining: 0, resetAt: rec.resetAt };
   }
   rec.count += 1;
-  return { allowed: true, remaining: MAX_REQUESTS - rec.count, resetAt: rec.resetAt };
+  return { allowed: true, limit: MAX_REQUESTS, remaining: MAX_REQUESTS - rec.count, resetAt: rec.resetAt };
 }
 
 async function callProvider(provider, messages, opts) {
@@ -100,19 +112,31 @@ function extractJson(raw) {
 }
 
 module.exports = async function handler(req, res) {
+  const ip = getClientIp(req);
+
+  // Status check — the UI polls this on load to show "X left / resets in Yh"
+  // without spending any of the user's quota.
+  if (req.method === "GET") {
+    const st = getStatus(ip);
+    res.setHeader("X-RateLimit-Limit", String(st.limit));
+    res.setHeader("X-RateLimit-Remaining", String(st.remaining));
+    res.setHeader("X-RateLimit-Reset", String(st.resetAt));
+    res.status(200).json(st);
+    return;
+  }
+
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
     return;
   }
 
-  const ip = getClientIp(req);
-  const rl = checkRateLimit(ip);
-  res.setHeader("X-RateLimit-Limit", String(MAX_REQUESTS));
+  const rl = consume(ip);
+  res.setHeader("X-RateLimit-Limit", String(rl.limit));
   res.setHeader("X-RateLimit-Remaining", String(rl.remaining));
   res.setHeader("X-RateLimit-Reset", String(rl.resetAt));
   if (!rl.allowed) {
     const minsLeft = Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 60000));
-    res.status(429).json({ error: "Rate limit reached. Try again in ~" + minsLeft + " minutes." });
+    res.status(429).json({ error: "Rate limit reached. Try again in ~" + minsLeft + " minutes.", limit: rl.limit, remaining: rl.remaining, resetAt: rl.resetAt });
     return;
   }
 
@@ -177,7 +201,7 @@ module.exports = async function handler(req, res) {
     try {
       const raw = await callProvider(provider, messages, callOpts);
       if (!isParse) {
-        res.status(200).json({ result: raw, provider: provider.name });
+        res.status(200).json({ result: raw, provider: provider.name, limit: rl.limit, remaining: rl.remaining, resetAt: rl.resetAt });
         return;
       }
       const parsed = extractJson(raw);
@@ -185,7 +209,7 @@ module.exports = async function handler(req, res) {
         lastError = provider.name + " did not return valid JSON";
         continue;
       }
-      res.status(200).json({ result: parsed, provider: provider.name });
+      res.status(200).json({ result: parsed, provider: provider.name, limit: rl.limit, remaining: rl.remaining, resetAt: rl.resetAt });
       return;
     } catch (e) {
       lastError = e && e.message ? e.message : String(e);
