@@ -1,6 +1,8 @@
 // Vercel serverless function — POST { kind, ... } -> JSON result
-// Tries Groq first, falls back to Mistral. Both API keys are read from
-// environment variables set in the Vercel project (never committed to git).
+// Tries Groq first, then Mistral, then OpenRouter (free model) as a last
+// resort. All keys are read from environment variables set in the Vercel
+// project (never committed to git) — a provider is simply skipped if its
+// key isn't set.
 //
 // kind:
 //   "summary" | "org" | "edu" | "ach" | "proj"  -> rewrite a single field, returns { result: string }
@@ -103,6 +105,10 @@ async function callProvider(provider, messages, opts) {
     max_tokens: opts.maxTokens,
   };
   if (opts.jsonMode) payload.response_format = { type: "json_object" };
+  // gpt-oss (served via OpenRouter) is a reasoning model — it burns tokens on
+  // hidden reasoning before the visible answer, so keep that budget small or
+  // small max_tokens calls come back truncated with empty content.
+  if (provider.reasoningEffort) payload.reasoning = { effort: provider.reasoningEffort };
 
   const r = await fetch(provider.url, {
     method: "POST",
@@ -263,10 +269,17 @@ module.exports = async function handler(req, res) {
       url: "https://api.mistral.ai/v1/chat/completions",
       model: "mistral-small-latest",
     },
+    process.env.OPENROUTER_API_KEY && {
+      name: "openrouter",
+      key: process.env.OPENROUTER_API_KEY,
+      url: "https://openrouter.ai/api/v1/chat/completions",
+      model: "openai/gpt-oss-20b:free",
+      reasoningEffort: "low",
+    },
   ].filter(Boolean);
 
   if (!providers.length) {
-    res.status(500).json({ error: "No AI provider configured on the server (missing GROQ_API_KEY / MISTRAL_API_KEY)." });
+    res.status(500).json({ error: "No AI provider configured on the server (missing GROQ_API_KEY / MISTRAL_API_KEY / OPENROUTER_API_KEY)." });
     return;
   }
 

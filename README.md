@@ -2,8 +2,9 @@
 
 A free, ATS-friendly resume/CV builder. No login, no accounts — data is kept
 in your browser (`localStorage`) only. Includes an optional "✨ AI improve"
-button on the summary and description fields, powered by a serverless
-function that calls Groq (primary) with Mistral as a fallback.
+button on the summary and description fields plus a chat assistant, powered
+by a serverless function that tries Groq, then Mistral, then OpenRouter
+(free model) as a last resort.
 
 ## Project structure
 
@@ -29,11 +30,16 @@ local testing. `.env.local` is git-ignored and never committed.
 
 1. Import this repo into Vercel (framework preset: "Other" — no build command
    needed).
-2. In the project's **Settings → Environment Variables**, add:
+2. In the project's **Settings → Environment Variables**, add whichever of
+   these you have (all optional, but at least one is required for the AI
+   features to work):
    - `GROQ_API_KEY` — from [console.groq.com](https://console.groq.com)
    - `MISTRAL_API_KEY` — from [console.mistral.ai](https://console.mistral.ai)
-3. Redeploy. The AI button works once at least one key is set; if both are
-   set, Groq is tried first and Mistral is used as a fallback.
+   - `OPENROUTER_API_KEY` — from [openrouter.ai/keys](https://openrouter.ai/keys)
+     (uses the free `openai/gpt-oss-20b:free` model)
+3. Redeploy. The server tries Groq first, then Mistral, then OpenRouter —
+   whichever keys are set are used in that order; a provider without a key
+   is simply skipped.
 
 **Never commit real API keys to this repo.** They're read from environment
 variables on the server only — the browser never sees them.
