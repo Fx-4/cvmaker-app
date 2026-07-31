@@ -1,6 +1,11 @@
-// Vercel serverless function — POST { kind, text } -> { result, provider }
+// Vercel serverless function — POST { kind, ... } -> JSON result
 // Tries Groq first, falls back to Mistral. Both API keys are read from
 // environment variables set in the Vercel project (never committed to git).
+//
+// kind:
+//   "summary" | "org" | "edu" | "ach" | "proj"  -> rewrite a single field, returns { result: string }
+//   "parse"                                     -> PDF text -> structured resume JSON, returns { result: object }
+//   "chat"                                      -> conversational CV assistant, returns { result: { reply, actions } }
 
 const WINDOW_MS = 3 * 60 * 60 * 1000; // 3 hours
 const MAX_REQUESTS = 8; // per IP, per window
@@ -34,6 +39,29 @@ const PARSE_SCHEMA_HINT = `Extract structured resume data from the raw text belo
   "proj": [{"name":"","role":"","link":"","summary":"","tech":["tech1"],"featured":false}]
 }
 Rules: "org" = organizational/work experience entries. Keep dates in the format found in the source (e.g. "Jan 2022"). Leave "cert"/"link" empty unless an explicit URL is present in the source. Output valid JSON and nothing else.`;
+
+const CHAT_SYSTEM_PROMPT = `You are an in-app AI assistant embedded in "CV Builder", a resume/CV editor. The user chats with you in natural language (reply in whatever language the user writes in — Indonesian or English) to review, rewrite, or restructure parts of their CV.
+
+You are given the user's current CV data as JSON below. Only reference fields that exist in it.
+
+Rules:
+1. If the user's request is ambiguous or could be done multiple ways (e.g. "update my job description" could mean: rewrite it entirely, paraphrase it lightly, shorten it, or emphasize different skills), do NOT propose an action yet. Ask a short clarifying question and list 2-4 concrete options in "reply" so the user can pick one in their next message. Leave "actions" empty ([]) in this case.
+2. Only propose an action once intent is clear enough to write the exact new value. The user always sees a preview and must explicitly approve every action in the UI — you never apply anything directly — but still propose exactly ONE clear, well-reasoned change per turn rather than several conflicting options.
+3. Never invent facts (employers, dates, numbers, links) that aren't in the CV data or that the user told you in this conversation. Ask instead of guessing.
+4. Output STRICT JSON only, no markdown, no code fences, matching exactly this shape:
+{
+  "reply": "your conversational reply, in the user's language",
+  "actions": [
+    { "type": "update", "path": "about", "value": "new text", "label": "short label describing this change" }
+  ]
+}
+"actions" must be [] when you are only asking a question or chatting.
+For "type":"update": "path" must be one of: name, role, about, location, email, phone, linkedin, github, instagram, website, skills (value must be an array of strings), or "org.<index>.<field>" / "education.<index>.<field>" / "ach.<index>.<field>" / "proj.<index>.<field>" — using an existing index from the CV JSON given to you.
+For "type":"add": set "key" to one of org/education/ach/proj and "value" to a full new object matching that section's item shape (see the CV JSON for the shape), to append a brand-new entry.`;
+
+const SCALAR_PATHS = new Set(["name", "role", "about", "location", "email", "phone", "linkedin", "github", "instagram", "website", "skills"]);
+const ARRAY_KEYS = new Set(["org", "education", "ach", "proj"]);
+const PATH_RE = /^([a-zA-Z]+)(?:\.(\d+)\.([a-zA-Z]+))?$/;
 
 function getClientIp(req) {
   const fwd = req.headers["x-forwarded-for"];
@@ -111,6 +139,39 @@ function extractJson(raw) {
   }
 }
 
+// Keep only the actions that point at real, editable CV fields — the model
+// is a text generator, not a trusted authority on our own data shape, so we
+// re-validate everything it proposes before it's even shown to the user.
+function sanitizeChatActions(actions, cvState) {
+  if (!Array.isArray(actions)) return [];
+  const out = [];
+  for (const a of actions.slice(0, 5)) {
+    if (!a || typeof a !== "object") continue;
+    if (a.type === "update") {
+      if (typeof a.path !== "string") continue;
+      const m = PATH_RE.exec(a.path);
+      if (!m) continue;
+      const root = m[1];
+      if (m[2] !== undefined) {
+        // arrayKey.index.field
+        if (!ARRAY_KEYS.has(root)) continue;
+        const idx = parseInt(m[2], 10);
+        const arr = cvState[root];
+        if (!Array.isArray(arr) || !arr[idx] || typeof arr[idx] !== "object") continue;
+        if (!(m[3] in arr[idx])) continue;
+      } else if (!SCALAR_PATHS.has(root)) {
+        continue;
+      }
+      if (root === "skills" && !Array.isArray(a.value)) continue;
+      out.push({ type: "update", path: a.path, value: a.value, label: String(a.label || "Update " + a.path).slice(0, 160) });
+    } else if (a.type === "add") {
+      if (!ARRAY_KEYS.has(a.key) || !a.value || typeof a.value !== "object" || Array.isArray(a.value)) continue;
+      out.push({ type: "add", key: a.key, value: a.value, label: String(a.label || "Add new " + a.key + " entry").slice(0, 160) });
+    }
+  }
+  return out;
+}
+
 module.exports = async function handler(req, res) {
   const ip = getClientIp(req);
 
@@ -150,29 +211,44 @@ module.exports = async function handler(req, res) {
   }
   const kind = body && body.kind;
   const isParse = kind === "parse";
-  const text = ((body && body.text) || "").toString().slice(0, isParse ? 12000 : 2000);
+  const isChat = kind === "chat";
 
-  if (!text.trim() || (!isParse && !PROMPTS[kind])) {
-    res.status(400).json({ error: "Missing or invalid 'kind'/'text'" });
-    return;
+  let messages;
+  let cvStateForSanitize = null;
+
+  if (isChat) {
+    const message = ((body && body.message) || "").toString().trim().slice(0, 1000);
+    const cvState = (body && body.state && typeof body.state === "object") ? body.state : {};
+    const history = Array.isArray(body && body.history) ? body.history.slice(-8) : [];
+    if (!message) {
+      res.status(400).json({ error: "Missing 'message'" });
+      return;
+    }
+    cvStateForSanitize = cvState;
+    messages = [
+      { role: "system", content: CHAT_SYSTEM_PROMPT + "\n\nCurrent CV data (JSON):\n" + JSON.stringify(cvState).slice(0, 8000) },
+    ];
+    for (const h of history) {
+      if (!h || typeof h.text !== "string") continue;
+      messages.push({ role: h.role === "assistant" ? "assistant" : "user", content: h.text.slice(0, 1000) });
+    }
+    messages.push({ role: "user", content: message });
+  } else {
+    const text = ((body && body.text) || "").toString().slice(0, isParse ? 12000 : 2000);
+    if (!text.trim() || (!isParse && !PROMPTS[kind])) {
+      res.status(400).json({ error: "Missing or invalid 'kind'/'text'" });
+      return;
+    }
+    messages = isParse
+      ? [
+          { role: "system", content: "You are a resume-parsing assistant. You only output strict JSON, nothing else — no markdown, no code fences, no commentary." },
+          { role: "user", content: PARSE_SCHEMA_HINT + "\n\n---\n" + text },
+        ]
+      : [
+          { role: "system", content: "You are a professional resume-writing assistant. You only output the rewritten text with no preamble, no markdown formatting, and no quotation marks." },
+          { role: "user", content: PROMPTS[kind] + "\n\n---\n" + text },
+        ];
   }
-
-  const messages = isParse
-    ? [
-        {
-          role: "system",
-          content: "You are a resume-parsing assistant. You only output strict JSON, nothing else — no markdown, no code fences, no commentary.",
-        },
-        { role: "user", content: PARSE_SCHEMA_HINT + "\n\n---\n" + text },
-      ]
-    : [
-        {
-          role: "system",
-          content:
-            "You are a professional resume-writing assistant. You only output the rewritten text with no preamble, no markdown formatting, and no quotation marks.",
-        },
-        { role: "user", content: PROMPTS[kind] + "\n\n---\n" + text },
-      ];
 
   const providers = [
     process.env.GROQ_API_KEY && {
@@ -194,21 +270,36 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const callOpts = { maxTokens: isParse ? 3000 : 400, jsonMode: isParse };
+  const usesJson = isParse || isChat;
+  const callOpts = { maxTokens: isParse ? 3000 : isChat ? 900 : 400, jsonMode: usesJson };
 
   let lastError = "";
   for (const provider of providers) {
     try {
       const raw = await callProvider(provider, messages, callOpts);
-      if (!isParse) {
+
+      if (!usesJson) {
         res.status(200).json({ result: raw, provider: provider.name, limit: rl.limit, remaining: rl.remaining, resetAt: rl.resetAt });
         return;
       }
+
       const parsed = extractJson(raw);
       if (!parsed || typeof parsed !== "object") {
         lastError = provider.name + " did not return valid JSON";
         continue;
       }
+
+      if (isChat) {
+        const reply = typeof parsed.reply === "string" ? parsed.reply.slice(0, 3000) : "";
+        if (!reply) {
+          lastError = provider.name + " returned no reply text";
+          continue;
+        }
+        const actions = sanitizeChatActions(parsed.actions, cvStateForSanitize);
+        res.status(200).json({ result: { reply, actions }, provider: provider.name, limit: rl.limit, remaining: rl.remaining, resetAt: rl.resetAt });
+        return;
+      }
+
       res.status(200).json({ result: parsed, provider: provider.name, limit: rl.limit, remaining: rl.remaining, resetAt: rl.resetAt });
       return;
     } catch (e) {

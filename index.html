@@ -440,7 +440,47 @@
   .ai-budget.empty { color: hsl(0 72% 42%); }
   .ai-budget.empty::before { background: hsl(0 72% 51%); }
 
-  body.ai-locked .ai-btn, body.ai-locked #cvDropzone { opacity: .45; pointer-events: none; }
+  body.ai-locked .ai-btn, body.ai-locked #cvDropzone, body.ai-locked .chat-send, body.ai-locked .chat-fab { opacity: .45; pointer-events: none; }
+
+  /* ---- AI chat assistant ---- */
+  .chat-fab { position: fixed; right: 22px; bottom: 22px; width: 52px; height: 52px; border-radius: 50%; border: 0; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-size: 22px; cursor: pointer; box-shadow: 0 8px 24px rgba(16,24,40,.25); z-index: 60; display: grid; place-items: center; transition: transform .15s; }
+  .chat-fab:hover { transform: scale(1.06); }
+  .chat-fab .badge-dot { position: absolute; top: 4px; right: 4px; width: 10px; height: 10px; border-radius: 50%; background: hsl(0 72% 55%); border: 2px solid hsl(var(--background)); display: none; }
+  .chat-fab.has-msg .badge-dot { display: block; }
+
+  .chat-panel { position: fixed; right: 22px; bottom: 86px; width: 380px; max-width: calc(100vw - 32px); height: 560px; max-height: calc(100vh - 120px); background: hsl(var(--background)); border: 1px solid hsl(var(--border)); border-radius: 14px; box-shadow: 0 20px 60px rgba(16,24,40,.28); display: flex; flex-direction: column; z-index: 60; overflow: hidden; }
+  .chat-panel[hidden] { display: none; }
+  .chat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid hsl(var(--border)); }
+  .chat-head-title { display: flex; flex-direction: column; }
+  .chat-head-title b { font-size: 13px; }
+  .chat-head-title span { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+  .chat-close { border: 0; background: none; cursor: pointer; color: hsl(var(--muted-foreground)); font-size: 18px; line-height: 1; padding: 4px; }
+  .chat-close:hover { color: hsl(var(--foreground)); }
+
+  .chat-body { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; scrollbar-width: thin; }
+  .chat-msg { max-width: 88%; font-size: 12.5px; line-height: 1.5; padding: 8px 11px; border-radius: 12px; white-space: pre-wrap; }
+  .chat-msg.user { align-self: flex-end; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-bottom-right-radius: 3px; }
+  .chat-msg.ai { align-self: flex-start; background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); border-bottom-left-radius: 3px; }
+  .chat-msg.system { align-self: center; font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); background: none; padding: 2px; }
+
+  .chat-action { align-self: flex-start; max-width: 92%; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px; background: hsl(var(--background)); font-size: 12px; }
+  .chat-action .ca-label { font-weight: 600; margin-bottom: 6px; }
+  .chat-action .ca-diff { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; font-family: var(--font-mono); font-size: 11px; }
+  .chat-action .ca-diff .before { color: hsl(0 60% 45%); text-decoration: line-through; opacity: .75; }
+  .chat-action .ca-diff .after { color: hsl(142 60% 30%); }
+  .chat-action .ca-btns { display: flex; gap: 6px; }
+  .chat-action .ca-btns button { flex: 1; height: 28px; border-radius: 7px; font-size: 11.5px; font-weight: 600; cursor: pointer; border: 1px solid hsl(var(--border)); background: hsl(var(--background)); }
+  .chat-action .ca-btns .ca-apply { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+  .chat-action .ca-btns button:hover { opacity: .9; }
+  .chat-action.applied { opacity: .6; }
+  .chat-action .ca-status { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+
+  .chat-typing { align-self: flex-start; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+  .chat-input-row { display: flex; gap: 8px; padding: 10px; border-top: 1px solid hsl(var(--border)); }
+  .chat-input-row input { flex: 1; }
+  .chat-send { height: 36px; padding: 0 14px; border-radius: 8px; border: 0; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-weight: 600; font-size: 12.5px; cursor: pointer; }
+  .chat-send:disabled { opacity: .5; cursor: default; }
 
   @media (max-width: 980px) { .app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; } .editor { border-right: 0; border-bottom: 1px solid hsl(var(--border)); max-height: 52vh; } }
 
@@ -615,6 +655,21 @@
   </section>
 </div>
 <div class="toast" id="toast"></div>
+
+<button class="chat-fab" id="chatFab" type="button" aria-label="Open AI assistant"><span id="chatFabDot" class="badge-dot"></span>💬</button>
+<div class="chat-panel" id="chatPanel" hidden>
+  <div class="chat-head">
+    <div class="chat-head-title"><b>AI Assistant</b><span>Ask it to review or edit your CV</span></div>
+    <button class="chat-close" id="chatClose" type="button" aria-label="Close">✕</button>
+  </div>
+  <div class="chat-body" id="chatBody">
+    <div class="chat-msg system">Tell me what to change — e.g. "make my summary punchier" or "shorten the GDGoC description". I'll ask before editing anything, and every change needs your OK.</div>
+  </div>
+  <div class="chat-input-row">
+    <input type="text" id="chatInput" placeholder="Ask the AI to review or edit your CV…" aria-label="Message" />
+    <button class="chat-send" id="chatSend" type="button">Send</button>
+  </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
@@ -1406,6 +1461,179 @@
       handleCvFile(f);
     });
   }
+
+  // ---------- AI chat assistant ----------
+  var chatHistory = []; // [{ role: "user"|"assistant", text }]
+  var chatBusy = false;
+
+  function cvSnapshotForAi() {
+    return {
+      name: state.name, role: state.role, about: state.about, location: state.location,
+      email: state.email, phone: state.phone, linkedin: state.linkedin, github: state.github,
+      instagram: state.instagram, website: state.website,
+      org: state.org, education: state.education, ach: state.ach, skills: state.skills, proj: state.proj
+    };
+  }
+
+  function getByPath(root, path) {
+    var parts = path.split(".");
+    var cur = root;
+    for (var i = 0; i < parts.length; i++) {
+      var key = /^\d+$/.test(parts[i]) ? parseInt(parts[i], 10) : parts[i];
+      if (cur == null) return undefined;
+      cur = cur[key];
+    }
+    return cur;
+  }
+  function setByPath(root, path, value) {
+    var parts = path.split(".");
+    var cur = root;
+    for (var i = 0; i < parts.length - 1; i++) {
+      var key = /^\d+$/.test(parts[i]) ? parseInt(parts[i], 10) : parts[i];
+      if (cur[key] == null) return false;
+      cur = cur[key];
+    }
+    var last = parts[parts.length - 1];
+    if (/^\d+$/.test(last)) last = parseInt(last, 10);
+    cur[last] = value;
+    return true;
+  }
+
+  function chatScrollToBottom() {
+    var body = document.getElementById("chatBody");
+    body.scrollTop = body.scrollHeight;
+  }
+  function appendChatMsg(role, text) {
+    var body = document.getElementById("chatBody");
+    var div = document.createElement("div");
+    div.className = "chat-msg " + role;
+    div.textContent = text;
+    body.appendChild(div);
+    chatScrollToBottom();
+    return div;
+  }
+  function formatPreviewValue(v) {
+    if (v == null) return "(empty)";
+    if (Array.isArray(v)) return v.join(", ") || "(empty)";
+    var s = String(v);
+    return s.length > 140 ? s.slice(0, 140) + "…" : (s || "(empty)");
+  }
+
+  function appendChatAction(action) {
+    var body = document.getElementById("chatBody");
+    var card = document.createElement("div");
+    card.className = "chat-action";
+
+    var label = document.createElement("div"); label.className = "ca-label"; label.textContent = action.label;
+    card.appendChild(label);
+
+    var diff = document.createElement("div"); diff.className = "ca-diff";
+    if (action.type === "update") {
+      var before = getByPath(state, action.path);
+      var b = document.createElement("div"); b.className = "before"; b.textContent = "− " + formatPreviewValue(before);
+      var a = document.createElement("div"); a.className = "after"; a.textContent = "+ " + formatPreviewValue(action.value);
+      diff.appendChild(b); diff.appendChild(a);
+    } else if (action.type === "add") {
+      var a2 = document.createElement("div"); a2.className = "after";
+      a2.textContent = "+ new " + action.key + ": " + formatPreviewValue(action.value.name || action.value.title || action.value.org || action.value.school || JSON.stringify(action.value));
+      diff.appendChild(a2);
+    }
+    card.appendChild(diff);
+
+    var btns = document.createElement("div"); btns.className = "ca-btns";
+    var applyBtn = document.createElement("button"); applyBtn.className = "ca-apply"; applyBtn.textContent = "✓ Terapkan";
+    var skipBtn = document.createElement("button"); skipBtn.textContent = "✕ Lewati";
+    btns.appendChild(applyBtn); btns.appendChild(skipBtn);
+    card.appendChild(btns);
+
+    function finish(statusText) {
+      btns.remove();
+      card.classList.add("applied");
+      var st = document.createElement("div"); st.className = "ca-status"; st.textContent = statusText;
+      card.appendChild(st);
+      chatScrollToBottom();
+    }
+
+    applyBtn.addEventListener("click", function () {
+      var ok = false;
+      if (action.type === "update") ok = setByPath(state, action.path, action.value);
+      else if (action.type === "add") { state[action.key] = state[action.key] || []; state[action.key].push(action.value); ok = true; }
+      if (ok) {
+        touched(); state.usingSample = false; rebindAll();
+        finish("✓ Diterapkan");
+      } else {
+        finish("Gagal menerapkan — field tidak ditemukan");
+      }
+    });
+    skipBtn.addEventListener("click", function () { finish("Dilewati"); });
+
+    body.appendChild(card);
+    chatScrollToBottom();
+  }
+
+  function setChatBusy(busy) {
+    chatBusy = busy;
+    var sendBtn = document.getElementById("chatSend");
+    var input = document.getElementById("chatInput");
+    if (sendBtn) sendBtn.disabled = busy || aiIsLocked();
+    if (input) input.disabled = busy;
+    var typing = document.getElementById("chatTyping");
+    if (busy && !typing) {
+      typing = document.createElement("div"); typing.id = "chatTyping"; typing.className = "chat-typing"; typing.textContent = "AI is thinking…";
+      document.getElementById("chatBody").appendChild(typing); chatScrollToBottom();
+    } else if (!busy && typing) {
+      typing.remove();
+    }
+  }
+
+  function sendChatMessage() {
+    if (chatBusy) return;
+    if (aiIsLocked()) { toast("AI limit reached on this device — resets in " + formatCountdown(aiBudget.resetAt - Date.now())); return; }
+    var input = document.getElementById("chatInput");
+    var msg = (input.value || "").trim();
+    if (!msg) return;
+    input.value = "";
+    appendChatMsg("user", msg);
+    chatHistory.push({ role: "user", text: msg });
+    setChatBusy(true);
+    fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "chat", message: msg, history: chatHistory.slice(-8), state: cvSnapshotForAi() })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) { readBudgetFromResponse(r, data); return { ok: r.ok, data: data }; });
+    }).then(function (res) {
+      setChatBusy(false);
+      if (!res.ok || !res.data || !res.data.result) {
+        appendChatMsg("system", (res.data && res.data.error) || "AI request failed");
+        return;
+      }
+      var reply = res.data.result.reply || "";
+      var actions = res.data.result.actions || [];
+      appendChatMsg("ai", reply);
+      chatHistory.push({ role: "assistant", text: reply });
+      actions.forEach(appendChatAction);
+      if (chatPanel.hidden) chatFab.classList.add("has-msg");
+    }).catch(function () {
+      setChatBusy(false);
+      appendChatMsg("system", "AI request failed — check your connection");
+    });
+  }
+
+  var chatFab = document.getElementById("chatFab");
+  var chatPanel = document.getElementById("chatPanel");
+  if (chatFab && chatPanel) {
+    chatFab.addEventListener("click", function () {
+      chatPanel.hidden = !chatPanel.hidden;
+      if (!chatPanel.hidden) { chatFab.classList.remove("has-msg"); document.getElementById("chatInput").focus(); chatScrollToBottom(); }
+    });
+    document.getElementById("chatClose").addEventListener("click", function () { chatPanel.hidden = true; });
+    document.getElementById("chatSend").addEventListener("click", sendChatMessage);
+    document.getElementById("chatInput").addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+    });
+  }
+
   function rebindAll() { refreshProfileValues(); renderAllLists(); if (document.getElementById("skills-input").__paint) document.getElementById("skills-input").__paint(); updatePhotoThumb(); applyLangChrome(); applyTheme(); renderPreview(); save(); }
   var pb1 = document.getElementById("printBtn"); if (pb1) pb1.addEventListener("click", function () { window.focus(); window.print(); });
   var pb2 = document.getElementById("printBtn2"); if (pb2) pb2.addEventListener("click", function () { window.focus(); window.print(); });
