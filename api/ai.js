@@ -18,17 +18,34 @@ const MAX_REQUESTS = 8; // per IP, per window
 // across all instances, back this with a shared store (e.g. Upstash Redis).
 const hits = globalThis.__cvmakerAiHits || (globalThis.__cvmakerAiHits = new Map());
 
+// Many real-world ATS screeners (especially common in Indonesia) score a
+// listing higher when it has several specific, detail-rich bullet points
+// rather than a short condensed summary. So "rewrite" here means "restructure
+// and sharpen the wording", NOT "shrink" — but it must also never invent
+// facts. An earlier version of this prompt asked for "specifics... numbers...
+// outcomes" without an equally strong anti-fabrication rule, and the model
+// filled gaps with plausible-sounding but entirely made-up metrics, tools,
+// and event names. A resume with fabricated numbers is actively harmful (it
+// can get someone caught lying in an interview), so every prompt below leads
+// with a hard anti-fabrication rule before asking for detail.
+const NO_FABRICATION_RULE =
+  "Hard rules: (1) Do NOT invent, estimate, or assume any fact that is not explicitly present in the source text below — no percentages, metrics, counts, team sizes, tool names, event names, dates, or outcomes the source doesn't state. If the source has no number, do not add one. (2) Do NOT drop any concrete detail that IS in the source, either — every number, scope, name, or specific already present must still appear in your rewrite. You MAY restructure, split into bullets, and use stronger wording — but the informational content must match the source: not more, not less.";
 const PROMPTS = {
   summary:
-    "Rewrite the following resume professional summary to be concise, impactful, and ATS-friendly. Keep it 2-4 sentences, in English, no first-person pronouns. Return ONLY the rewritten text — no quotes, no markdown, no preamble.",
+    NO_FABRICATION_RULE +
+    " Rewrite the following resume professional summary to be impactful and ATS-friendly, in English, no first-person pronouns. Keep it 3-5 sentences, specific enough to carry real keywords (skills, domain, scope) that are actually in the source. Return ONLY the rewritten text — no quotes, no markdown, no preamble.",
   org:
-    'Rewrite the following organizational/work experience description into 2-4 concise, ATS-friendly bullet points starting with strong action verbs. Separate bullets with a newline, each starting with "• ". Return ONLY the rewritten text — no preamble.',
+    NO_FABRICATION_RULE +
+    ' Rewrite the following organizational/work experience description into 4-7 ATS-friendly bullet points, one per concrete thing the source actually describes (don\'t pad with filler bullets to hit a count — fewer honest bullets beat extra invented ones). Each bullet starts with a strong action verb. Separate bullets with a newline, each starting with "• ". Return ONLY the rewritten text — no preamble.',
   edu:
-    'Rewrite the following education note/highlight into concise, ATS-friendly bullet points starting with strong action verbs. Separate bullets with a newline, each starting with "• ". Return ONLY the rewritten text — no preamble.',
+    NO_FABRICATION_RULE +
+    ' Rewrite the following education note/highlight into ATS-friendly bullet points starting with strong action verbs, keeping every concrete detail (ranks, scores, competition names, roles) from the source and nothing more. Separate bullets with a newline, each starting with "• ". Return ONLY the rewritten text — no preamble.',
   ach:
-    "Rewrite the following achievement description to be concise and impactful for a resume, in English, 1-2 sentences. Return ONLY the rewritten text — no quotes, no preamble.",
+    NO_FABRICATION_RULE +
+    " Rewrite the following achievement description to be clear and specific for a resume, in English, using only the context (competition/event name, scale, contribution, result) already in the source. Return ONLY the rewritten text — no quotes, no preamble.",
   proj:
-    "Rewrite the following project description to be concise, results-oriented, and ATS-friendly for a resume, in English, 1-2 sentences. Return ONLY the rewritten text — no quotes, no preamble.",
+    NO_FABRICATION_RULE +
+    " Rewrite the following project description to be results-oriented for a resume, in English — what it does, the contribution, and the tech/methods, using only what the source states. Return ONLY the rewritten text — no quotes, no preamble.",
 };
 
 const PARSE_SCHEMA_HINT = `Extract structured resume data from the raw text below into STRICT JSON only (no markdown, no code fences, no explanation, no trailing commas). Use this exact shape — omit nothing, use "" or [] for anything not found:
@@ -46,8 +63,10 @@ const CHAT_SYSTEM_PROMPT = `You are an in-app AI assistant embedded in "CV Build
 
 You are given the user's current CV data as JSON below. Only reference fields that exist in it.
 
+Note on style: many real-world ATS screeners (especially in Indonesia) score a listing higher with several specific, detail-rich bullet points (scope, tools, numbers) rather than a short condensed summary. Default to detailed, keyword-rich bullets over vague one-liners unless the user explicitly asks to shorten something.
+
 Rules:
-1. If the user's request is ambiguous or could be done multiple ways (e.g. "update my job description" could mean: rewrite it entirely, paraphrase it lightly, shorten it, or emphasize different skills), do NOT propose an action yet. Ask a short clarifying question and list 2-4 concrete options in "reply" so the user can pick one in their next message. Leave "actions" empty ([]) in this case.
+1. If the user's request is ambiguous or could be done multiple ways (e.g. "update my job description" could mean: rewrite it entirely, add more specific detail/numbers, restructure into bullets, or emphasize different skills), do NOT propose an action yet. Ask a short clarifying question and list 2-4 concrete options in "reply" so the user can pick one in their next message. Leave "actions" empty ([]) in this case.
 2. Only propose an action once intent is clear enough to write the exact new value. The user always sees a preview and must explicitly approve every action in the UI — you never apply anything directly — but still propose exactly ONE clear, well-reasoned change per turn rather than several conflicting options.
 3. Never invent facts (employers, dates, numbers, links) that aren't in the CV data or that the user told you in this conversation. Ask instead of guessing.
 4. Output STRICT JSON only, no markdown, no code fences, matching exactly this shape:
@@ -284,7 +303,9 @@ module.exports = async function handler(req, res) {
   }
 
   const usesJson = isParse || isChat;
-  const callOpts = { maxTokens: isParse ? 3000 : isChat ? 900 : 400, jsonMode: usesJson };
+  // Rewrite calls now ask for 4-7 detailed bullets instead of a short
+  // summary, so they need more headroom than a one-liner would.
+  const callOpts = { maxTokens: isParse ? 3000 : isChat ? 900 : 650, jsonMode: usesJson };
 
   let lastError = "";
   for (const provider of providers) {
