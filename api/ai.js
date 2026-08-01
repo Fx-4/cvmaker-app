@@ -65,20 +65,24 @@ You are given the user's current CV data as JSON below. Only reference fields th
 
 Note on style: many real-world ATS screeners (especially in Indonesia) score a listing higher with several specific, detail-rich bullet points (scope, tools, numbers) rather than a short condensed summary. Default to detailed, keyword-rich bullets over vague one-liners unless the user explicitly asks to shorten something.
 
+The conversation history may include lines like "(Applied: ...)" or "(Skipped: ...)" or "(Undone: ...)" — these are factual system notes about what the user actually did with your previous proposals in the UI, not something the user typed. Treat them as ground truth: if your last suggestion was applied, the CV JSON below already reflects it; if it was skipped, it was NOT applied and the field is unchanged; if it was undone, it's back to its prior value. Do not re-propose an already-applied or already-skipped change unless the user asks again.
+
 Rules:
-1. If the user's request is ambiguous or could be done multiple ways (e.g. "update my job description" could mean: rewrite it entirely, add more specific detail/numbers, restructure into bullets, or emphasize different skills), do NOT propose an action yet. Ask a short clarifying question and list 2-4 concrete options in "reply" so the user can pick one in their next message. Leave "actions" empty ([]) in this case.
-2. Only propose an action once intent is clear enough to write the exact new value. The user always sees a preview and must explicitly approve every action in the UI — you never apply anything directly — but still propose exactly ONE clear, well-reasoned change per turn rather than several conflicting options.
-3. Never invent facts (employers, dates, numbers, links) that aren't in the CV data or that the user told you in this conversation. Ask instead of guessing.
+1. If the user's request is ambiguous or could be done multiple ways (e.g. "update my job description" could mean: rewrite it entirely, add more specific detail/numbers, restructure into bullets, or emphasize different skills), do NOT propose an action yet. Ask a short clarifying question, put 2-4 concrete options in "reply", and ALSO put those same short options in "suggestions" as tappable quick replies. Leave "actions" empty ([]) in this case.
+2. Only propose an action once intent is clear enough to write the exact new value. The user always sees a preview and must explicitly approve every action in the UI — you never apply anything directly — but still propose exactly ONE clear, well-reasoned change per turn rather than several conflicting options. Leave "suggestions" empty when you propose an action (the Apply/Skip buttons already cover that choice).
+3. Never invent facts, numbers, tools, or descriptive claims (employers, dates, metrics, links, skills, focus areas, "results-oriented"-style flourishes) that aren't in the CV data or that the user told you in this conversation — including inside rewritten text you propose as an action's "value". A resume with an invented detail is actively harmful (the user can get caught out for a false claim). If you don't have enough real detail to make a rewrite substantive, ask the user for the missing detail instead of inventing one, or say so plainly in "reply".
 4. Output STRICT JSON only, no markdown, no code fences, matching exactly this shape:
 {
   "reply": "your conversational reply, in the user's language",
   "actions": [
     { "type": "update", "path": "about", "value": "new text", "label": "short label describing this change" }
-  ]
+  ],
+  "suggestions": ["Rewrite entirely", "Just make it shorter", "Add more detail"]
 }
 "actions" must be [] when you are only asking a question or chatting.
 For "type":"update": "path" must be one of: name, role, about, location, email, phone, linkedin, github, instagram, website, skills (value must be an array of strings), or "org.<index>.<field>" / "education.<index>.<field>" / "ach.<index>.<field>" / "proj.<index>.<field>" — using an existing index from the CV JSON given to you.
-For "type":"add": set "key" to one of org/education/ach/proj and "value" to a full new object matching that section's item shape (see the CV JSON for the shape), to append a brand-new entry.`;
+For "type":"add": set "key" to one of org/education/ach/proj and "value" to a full new object matching that section's item shape (see the CV JSON for the shape), to append a brand-new entry.
+"suggestions" is a list of up to 4 short (a few words each) tappable reply options for the user, matching the options you listed in "reply" — use [] when there's nothing sensible to suggest (e.g. a fully open-ended question).`;
 
 const SCALAR_PATHS = new Set(["name", "role", "about", "location", "email", "phone", "linkedin", "github", "instagram", "website", "skills"]);
 const ARRAY_KEYS = new Set(["org", "education", "ach", "proj"]);
@@ -244,7 +248,7 @@ module.exports = async function handler(req, res) {
   if (isChat) {
     const message = ((body && body.message) || "").toString().trim().slice(0, 1000);
     const cvState = (body && body.state && typeof body.state === "object") ? body.state : {};
-    const history = Array.isArray(body && body.history) ? body.history.slice(-8) : [];
+    const history = Array.isArray(body && body.history) ? body.history.slice(-12) : [];
     if (!message) {
       res.status(400).json({ error: "Missing 'message'" });
       return;
@@ -330,7 +334,10 @@ module.exports = async function handler(req, res) {
           continue;
         }
         const actions = sanitizeChatActions(parsed.actions, cvStateForSanitize);
-        res.status(200).json({ result: { reply, actions }, provider: provider.name, limit: rl.limit, remaining: rl.remaining, resetAt: rl.resetAt });
+        const suggestions = Array.isArray(parsed.suggestions)
+          ? parsed.suggestions.filter((s) => typeof s === "string" && s.trim()).slice(0, 4).map((s) => s.trim().slice(0, 80))
+          : [];
+        res.status(200).json({ result: { reply, actions, suggestions }, provider: provider.name, limit: rl.limit, remaining: rl.remaining, resetAt: rl.resetAt });
         return;
       }
 

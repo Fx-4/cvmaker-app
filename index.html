@@ -463,7 +463,7 @@
   .chat-msg.ai { align-self: flex-start; background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); border-bottom-left-radius: 3px; }
   .chat-msg.system { align-self: center; font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); background: none; padding: 2px; }
 
-  .chat-action { align-self: flex-start; max-width: 92%; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px; background: hsl(var(--background)); font-size: 12px; }
+  .chat-action { align-self: flex-start; max-width: 92%; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px; background: hsl(var(--background)); font-size: 12px; transition: border-color .15s; }
   .chat-action .ca-label { font-weight: 600; margin-bottom: 6px; }
   .chat-action .ca-diff { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; font-family: var(--font-mono); font-size: 11px; }
   .chat-action .ca-diff .before { color: hsl(0 60% 45%); text-decoration: line-through; opacity: .75; }
@@ -472,10 +472,22 @@
   .chat-action .ca-btns button { flex: 1; height: 28px; border-radius: 7px; font-size: 11.5px; font-weight: 600; cursor: pointer; border: 1px solid hsl(var(--border)); background: hsl(var(--background)); }
   .chat-action .ca-btns .ca-apply { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
   .chat-action .ca-btns button:hover { opacity: .9; }
-  .chat-action.applied { opacity: .6; }
-  .chat-action .ca-status { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+  .chat-action.applied { border-color: hsl(142 60% 40% / .5); }
+  .chat-action.skipped, .chat-action.undone { opacity: .55; }
+  .chat-action .ca-status { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); display: flex; align-items: center; gap: 8px; }
+  .chat-action .ca-status .ca-applied-tag { color: hsl(142 60% 34%); font-weight: 600; }
+  .chat-action .ca-undo { background: none; border: 0; color: hsl(var(--muted-foreground)); text-decoration: underline; cursor: pointer; font-family: var(--font-mono); font-size: 10.5px; padding: 0; }
+  .chat-action .ca-undo:hover { color: hsl(var(--foreground)); }
+
+  .chat-suggestions { display: flex; flex-wrap: wrap; gap: 6px; align-self: flex-start; max-width: 92%; }
+  .chat-chip { border: 1px solid hsl(var(--border)); background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: 11.5px; padding: 5px 11px; border-radius: 999px; cursor: pointer; transition: background .15s; }
+  .chat-chip:hover { background: hsl(var(--secondary)); }
+  .chat-chip:disabled { opacity: .5; cursor: default; }
 
   .chat-typing { align-self: flex-start; font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+  @keyframes cvFlash { 0% { box-shadow: 0 0 0 4px hsl(var(--ring) / .55), 0 12px 40px rgba(16,24,40,.12); } 100% { box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 12px 40px rgba(16,24,40,.12); } }
+  .page.cv-flash { animation: cvFlash 900ms ease; }
 
   .chat-input-row { display: flex; gap: 8px; padding: 10px; border-top: 1px solid hsl(var(--border)); }
   .chat-input-row input { flex: 1; }
@@ -1561,6 +1573,17 @@
     return s.length > 140 ? s.slice(0, 140) + "…" : (s || "(empty)");
   }
 
+  function flashCvPreview() {
+    var page = document.getElementById("page");
+    if (!page) return;
+    page.classList.remove("cv-flash");
+    void page.offsetWidth; // restart the animation if it's already mid-flash
+    page.classList.add("cv-flash");
+    var preview = document.querySelector(".preview");
+    if (preview) preview.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    setTimeout(function () { page.classList.remove("cv-flash"); }, 950);
+  }
+
   function appendChatAction(action) {
     var body = document.getElementById("chatBody");
     var card = document.createElement("div");
@@ -1569,10 +1592,14 @@
     var label = document.createElement("div"); label.className = "ca-label"; label.textContent = action.label;
     card.appendChild(label);
 
+    // Snapshot what applying/undoing needs to do, captured now so it stays
+    // correct even if the user edits other fields before deciding.
+    var beforeValue = action.type === "update" ? getByPath(state, action.path) : undefined;
+    var addedRef = null; // the exact object pushed, so Undo can remove it by reference
+
     var diff = document.createElement("div"); diff.className = "ca-diff";
     if (action.type === "update") {
-      var before = getByPath(state, action.path);
-      var b = document.createElement("div"); b.className = "before"; b.textContent = "− " + formatPreviewValue(before);
+      var b = document.createElement("div"); b.className = "before"; b.textContent = "− " + formatPreviewValue(beforeValue);
       var a = document.createElement("div"); a.className = "after"; a.textContent = "+ " + formatPreviewValue(action.value);
       diff.appendChild(b); diff.appendChild(a);
     } else if (action.type === "add") {
@@ -1588,28 +1615,83 @@
     btns.appendChild(applyBtn); btns.appendChild(skipBtn);
     card.appendChild(btns);
 
-    function finish(statusText) {
-      btns.remove();
-      card.classList.add("applied");
-      var st = document.createElement("div"); st.className = "ca-status"; st.textContent = statusText;
+    function renderStatus(stateClass, tagText, showUndo) {
+      card.className = "chat-action " + stateClass;
+      var st = card.querySelector(".ca-status");
+      if (st) st.remove();
+      st = document.createElement("div"); st.className = "ca-status";
+      var tag = document.createElement("span"); tag.className = "ca-applied-tag"; tag.textContent = tagText;
+      st.appendChild(tag);
+      if (showUndo) {
+        var undoBtn = document.createElement("button"); undoBtn.className = "ca-undo"; undoBtn.textContent = "↩ Undo";
+        undoBtn.addEventListener("click", handleUndo);
+        st.appendChild(undoBtn);
+      }
       card.appendChild(st);
       chatScrollToBottom();
     }
 
+    function handleUndo() {
+      if (action.type === "update") {
+        setByPath(state, action.path, beforeValue);
+      } else if (action.type === "add" && addedRef) {
+        var arr = state[action.key] || [];
+        var idx = arr.indexOf(addedRef);
+        if (idx !== -1) arr.splice(idx, 1);
+      }
+      touched(); rebindAll(); flashCvPreview();
+      toast("↩ Reverted");
+      chatHistory.push({ role: "user", text: "(Undone: " + action.label + ")" });
+      renderStatus("undone", "↩ Reverted", false);
+    }
+
     applyBtn.addEventListener("click", function () {
       var ok = false;
-      if (action.type === "update") ok = setByPath(state, action.path, action.value);
-      else if (action.type === "add") { state[action.key] = state[action.key] || []; state[action.key].push(action.value); ok = true; }
+      if (action.type === "update") {
+        ok = setByPath(state, action.path, action.value);
+      } else if (action.type === "add") {
+        state[action.key] = state[action.key] || [];
+        addedRef = action.value;
+        state[action.key].push(addedRef);
+        ok = true;
+      }
+      btns.remove();
       if (ok) {
         touched(); state.usingSample = false; rebindAll();
-        finish("✓ Diterapkan");
+        flashCvPreview();
+        toast("✓ CV updated — check the preview");
+        chatHistory.push({ role: "user", text: "(Applied: " + action.label + ")" });
+        renderStatus("applied", "✓ Applied", true);
       } else {
-        finish("Gagal menerapkan — field tidak ditemukan");
+        renderStatus("skipped", "Failed — field not found", false);
       }
     });
-    skipBtn.addEventListener("click", function () { finish("Dilewati"); });
+    skipBtn.addEventListener("click", function () {
+      btns.remove();
+      chatHistory.push({ role: "user", text: "(Skipped: " + action.label + ")" });
+      renderStatus("skipped", "Skipped", false);
+    });
 
     body.appendChild(card);
+    chatScrollToBottom();
+  }
+
+  function appendChatSuggestions(suggestions) {
+    if (!suggestions || !suggestions.length) return;
+    var body = document.getElementById("chatBody");
+    var wrap = document.createElement("div");
+    wrap.className = "chat-suggestions";
+    suggestions.forEach(function (s) {
+      var chip = document.createElement("button");
+      chip.type = "button"; chip.className = "chat-chip"; chip.textContent = s;
+      chip.addEventListener("click", function () {
+        Array.prototype.forEach.call(wrap.querySelectorAll(".chat-chip"), function (c) { c.disabled = true; });
+        document.getElementById("chatInput").value = s;
+        sendChatMessage();
+      });
+      wrap.appendChild(chip);
+    });
+    body.appendChild(wrap);
     chatScrollToBottom();
   }
 
@@ -1641,7 +1723,7 @@
     fetch("/api/ai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "chat", message: msg, history: chatHistory.slice(-8), state: cvSnapshotForAi() })
+      body: JSON.stringify({ kind: "chat", message: msg, history: chatHistory.slice(-12), state: cvSnapshotForAi() })
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (data) { readBudgetFromResponse(r, data); return { ok: r.ok, data: data }; });
     }).then(function (res) {
@@ -1652,9 +1734,11 @@
       }
       var reply = res.data.result.reply || "";
       var actions = res.data.result.actions || [];
+      var suggestions = res.data.result.suggestions || [];
       appendChatMsg("ai", reply);
       chatHistory.push({ role: "assistant", text: reply });
       actions.forEach(appendChatAction);
+      if (!actions.length) appendChatSuggestions(suggestions);
       if (chatPanel.hidden) chatFab.classList.add("has-msg");
     }).catch(function () {
       setChatBusy(false);
