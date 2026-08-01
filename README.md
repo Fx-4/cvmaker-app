@@ -1,10 +1,21 @@
 # CV Builder
 
 A free, ATS-friendly resume/CV builder. No login, no accounts — data is kept
-in your browser (`localStorage`) only. Includes an optional "✨ AI improve"
-button on the summary and description fields plus a chat assistant, powered
-by a serverless function that tries Groq, then Mistral, then OpenRouter
-(free model) as a last resort.
+in your browser (`localStorage`) only. Includes:
+
+- A "✨ AI improve" button per section (summary, each work/org/education/
+  achievement/project description) plus a "✨ Improve All" bulk action.
+- A chat assistant that can review/rewrite any part of the CV — it asks
+  clarifying questions instead of guessing, shows every proposed change as a
+  before/after preview the user must explicitly approve, and every applied
+  change can be undone.
+- Drag-and-drop import of an existing CV (PDF) — text is extracted
+  client-side, then parsed into the form by AI.
+- Several ATS-safe templates, grouped as "Recommended for Indonesia" vs
+  "International" in the template picker.
+
+All AI features are powered by a serverless function that tries Groq, then
+Mistral, then OpenRouter (free model) as a last resort.
 
 ## Project structure
 

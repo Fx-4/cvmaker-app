@@ -60,6 +60,11 @@
   .btn-icon { width: 30px; height: 30px; padding: 0; justify-content: center; }
   select.ctrl { height: 34px; border-radius: 8px; border: 1px solid hsl(var(--input)); background: hsl(var(--background)); font-family: var(--font-sans); font-size: 12.5px; padding: 0 8px; cursor: pointer; }
 
+  .tpl-picker { display: flex; flex-direction: column; gap: 2px; }
+  .tpl-picker-label { font-family: var(--font-mono); font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: hsl(var(--muted-foreground)); }
+  @keyframes tplPulse { 0%, 100% { box-shadow: 0 0 0 0 hsl(var(--ring) / .45); } 50% { box-shadow: 0 0 0 5px hsl(var(--ring) / .12); } }
+  .tpl-picker.hint select.ctrl { animation: tplPulse 1.6s ease-in-out 3; }
+
   .langtog { display: inline-flex; border: 1px solid hsl(var(--border)); border-radius: 8px; overflow: hidden; }
   .langtog button { border: 0; background: hsl(var(--background)); font-family: var(--font-mono); font-size: 11px; font-weight: 600; padding: 0 11px; height: 34px; cursor: pointer; color: hsl(var(--muted-foreground)); }
   .langtog button.on { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
@@ -255,6 +260,22 @@
   .theme-elegant .r-section > h2 { font-family: Georgia, serif; font-weight: normal; font-size: 15px; color: #1a202c; border-bottom: 1px solid #cbd5e0; padding-bottom: 3px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
   .theme-elegant .r-entry-title { font-size: 13.5px; font-weight: 600; color: #2d3748; }
   .theme-elegant .r-period { font-family: var(--font-mono); font-size: 11px; color: #718096; }
+
+  /* ---- Theme: ATS Formal (ID) — Times New Roman, centered photo, underlined
+     headers, justified body. A layout commonly seen in Indonesian corporate
+     and government CVs; renders on the same generic HTML structure as
+     ats/modern/classic, purely via CSS. ---- */
+  .page.theme-formal-id { font-family: "Times New Roman", Times, serif; color: #000; }
+  .theme-formal-id .r-head { flex-direction: column; align-items: center; text-align: center; gap: 8px; }
+  .theme-formal-id .r-photo, .theme-formal-id .r-avatar { order: -1; width: 84px; height: 84px; border-radius: 50%; border: 2px solid #000; }
+  .theme-formal-id .r-name { font-size: 22px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+  .theme-formal-id .r-role { font-family: "Times New Roman", serif; font-size: 13px; font-weight: 600; margin-top: 4px; }
+  .theme-formal-id .r-about { text-align: justify; margin-top: 8px; font-size: 12.5px; line-height: 1.55; }
+  .theme-formal-id .r-contact { justify-content: center; margin-top: 8px; font-family: "Times New Roman", serif; }
+  .theme-formal-id .r-section > h2 { font-family: "Times New Roman", serif; font-size: 13.5px; font-weight: 700; text-decoration: underline; text-transform: uppercase; border-bottom: 0; letter-spacing: 0.03em; }
+  .theme-formal-id .r-desc { text-align: justify; }
+  .theme-formal-id .r-projects-grid { grid-template-columns: 1fr; }
+  .theme-formal-id .r-period { font-family: "Times New Roman", serif; font-size: 11.5px; color: #333; }
 
   /* ---- Theme: Haikal (exact PDF replication) ---- */
   .page.theme-haikal {
@@ -514,6 +535,7 @@
     select.ctrl { height: 30px; font-size: 11.5px; padding: 0 6px; }
     .btn { height: 32px; padding: 0 10px; font-size: 12px; }
     .btn-sm { height: 28px; padding: 0 8px; font-size: 11px; }
+    .tpl-picker-label { font-size: 8.5px; }
 
     .steps { padding: 10px 12px 0; gap: 2px; }
     .step-tab { padding: 5px 2px 10px; }
@@ -574,18 +596,27 @@
     </div>
     <div class="topbar-actions">
       <span class="ai-budget" id="aiBudgetBadge" title="AI usage limit on this device">✨ AI: —</span>
-      <select class="ctrl" id="themeSel" aria-label="Theme">
-        <option value="ats">ATS Classic</option>
-        <option value="ats-bold">ATS Bold</option>
-        <option value="modern">Modern Professional</option>
-        <option value="classic">Classic Serif</option>
-        <option value="sidebar">Modern Sidebar</option>
-        <option value="minimalist">Minimalist</option>
-        <option value="elegant">Elegant Executive</option>
-        <option value="haikal">Haikal PDF Layout</option>
-      </select>
-      <button class="btn btn-sm" id="loadSample" type="button" data-i18n="btnSample">Load sample</button>
-      <button class="btn btn-sm" id="resetBtn" type="button" data-i18n="btnReset">Clear</button>
+      <div class="tpl-picker" id="tplPicker">
+        <span class="tpl-picker-label">🎨 Template</span>
+        <select class="ctrl" id="themeSel" aria-label="CV template / theme">
+          <optgroup label="🇮🇩 Recommended for Indonesia">
+            <option value="ats">ATS Classic (Recommended)</option>
+            <option value="ats-bold">ATS Bold</option>
+            <option value="haikal">ATS Kompak — popular in Indonesia</option>
+            <option value="formal-id">ATS Formal (ID)</option>
+          </optgroup>
+          <optgroup label="🌍 International">
+            <option value="modern">Modern Professional</option>
+            <option value="classic">Classic Serif</option>
+            <option value="sidebar">Modern Sidebar</option>
+            <option value="minimalist">Minimalist</option>
+            <option value="elegant">Elegant Executive</option>
+          </optgroup>
+        </select>
+      </div>
+      <button class="btn btn-sm" id="loadSample" type="button">📝 <span data-i18n="btnSample">Load sample</span></button>
+      <button class="btn btn-sm" id="resetBtn" type="button">🗑️ <span data-i18n="btnReset">Clear</span></button>
+      <button class="btn btn-sm" id="improveAllBtn" type="button" title="Run AI improve on every filled-in section">✨ Improve All</button>
       <button class="btn btn-primary" id="printBtn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
         <span data-i18n="btnPrint">Print / PDF</span>
@@ -1332,6 +1363,23 @@
   function applyTheme() { document.getElementById("page").className = "page theme-" + state.theme; document.getElementById("themeSel").value = state.theme; }
   document.getElementById("themeSel").addEventListener("change", function (e) { state.theme = e.target.value; applyTheme(); renderPreview(); scheduleSave(); });
 
+  // First-visit nudge toward the template picker — most users only ever see
+  // the first screen and are unlikely to go exploring, so the control that
+  // changes the whole CV's look needs to be obvious from the start rather
+  // than just another unlabeled dropdown.
+  (function tplHint() {
+    var TPL_HINT_KEY = "cvbuilder:hint:tplSeen";
+    var picker = document.getElementById("tplPicker");
+    if (!picker || localStorage.getItem(TPL_HINT_KEY)) return;
+    picker.classList.add("hint");
+    function dismiss() {
+      picker.classList.remove("hint");
+      try { localStorage.setItem(TPL_HINT_KEY, "1"); } catch (e) {}
+    }
+    document.getElementById("themeSel").addEventListener("change", dismiss, { once: true });
+    setTimeout(dismiss, 8000);
+  })();
+
   // ---------- Toolbar ----------
   function toast(msg) { var t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove("show"); }, 2600); }
 
@@ -1425,9 +1473,106 @@
     runAiAssist(aiAboutBtn, ta, state, "about", "summary");
   });
 
+  // ---------- AI improve — all sections at once ----------
+  // The per-field "✨ AI improve" buttons already cover the "one section"
+  // case; this covers "all of them", queued one at a time (each is still a
+  // separate rate-limited request) with the running budget checked before
+  // every step so it stops cleanly instead of erroring out mid-batch.
+  function collectImprovableFields() {
+    var list = [];
+    if (state.about && state.about.trim()) {
+      list.push({ kind: "summary", label: "Summary", get: function () { return state.about; }, set: function (v) { state.about = v; } });
+    }
+    state.org.forEach(function (o, i) {
+      if (o.summary && o.summary.trim()) list.push({ kind: "org", label: "Org: " + (o.org || "#" + (i + 1)), get: function () { return o.summary; }, set: function (v) { o.summary = v; } });
+    });
+    state.education.forEach(function (e, i) {
+      if (e.summary && e.summary.trim()) list.push({ kind: "edu", label: "Education: " + (e.school || "#" + (i + 1)), get: function () { return e.summary; }, set: function (v) { e.summary = v; } });
+    });
+    state.ach.forEach(function (a, i) {
+      if (a.summary && a.summary.trim()) list.push({ kind: "ach", label: "Achievement: " + (a.title || "#" + (i + 1)), get: function () { return a.summary; }, set: function (v) { a.summary = v; } });
+    });
+    state.proj.forEach(function (p, i) {
+      if (p.summary && p.summary.trim()) list.push({ kind: "proj", label: "Project: " + (p.name || "#" + (i + 1)), get: function () { return p.summary; }, set: function (v) { p.summary = v; } });
+    });
+    return list;
+  }
+
+  function runImproveQueue(fields, index, doneCount, btn) {
+    if (index >= fields.length) {
+      renderAllLists(); renderPreview(); save();
+      btn.disabled = false; btn.textContent = "✨ Improve All";
+      toast("✓ Improved " + doneCount + " of " + fields.length + " section" + (fields.length === 1 ? "" : "s"));
+      return;
+    }
+    if (aiIsLocked()) {
+      renderAllLists(); renderPreview(); save();
+      btn.disabled = false; btn.textContent = "✨ Improve All";
+      toast("Stopped at " + doneCount + "/" + fields.length + " — AI limit reached, resets in " + formatCountdown(aiBudget.resetAt - Date.now()));
+      return;
+    }
+    var f = fields[index];
+    btn.textContent = "✨ " + (index + 1) + "/" + fields.length + "…";
+    fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: f.kind, text: f.get() })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) { readBudgetFromResponse(r, data); return { ok: r.ok, data: data }; });
+    }).then(function (res) {
+      if (res.ok && res.data && res.data.result) { f.set(res.data.result); doneCount++; renderAllLists(); renderPreview(); }
+      runImproveQueue(fields, index + 1, doneCount, btn);
+    }).catch(function () { runImproveQueue(fields, index + 1, doneCount, btn); });
+  }
+
+  var improveAllBtn = document.getElementById("improveAllBtn");
+  if (improveAllBtn) improveAllBtn.addEventListener("click", function () {
+    if (improveAllBtn.disabled) return;
+    if (aiIsLocked()) { toast("AI limit reached on this device — resets in " + formatCountdown(aiBudget.resetAt - Date.now())); return; }
+    var fields = collectImprovableFields();
+    if (!fields.length) { toast("Nothing to improve yet — fill in a summary or description first."); return; }
+    var remaining = aiBudget && typeof aiBudget.remaining === "number" ? aiBudget.remaining : null;
+    var confirmMsg = "Improve " + fields.length + " section" + (fields.length === 1 ? "" : "s") + " with AI?" +
+      (remaining != null ? " This uses up to " + Math.min(fields.length, remaining) + " of your " + remaining + " remaining AI credits." : "");
+    if (!confirm(confirmMsg)) return;
+    touched(); state.usingSample = false;
+    improveAllBtn.disabled = true;
+    runImproveQueue(fields, 0, 0, improveAllBtn);
+  });
+
   // ---------- Import existing CV (PDF -> AI parse -> fill form) ----------
   if (window.pdfjsLib) {
     pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+
+  // Group text fragments by their Y position into lines, then order each
+  // line left-to-right by X. Naively joining every fragment with a single
+  // space (the old approach) loses line breaks entirely, which jumbles
+  // bullet lists and multi-column layouts into one run-on paragraph before
+  // it ever reaches the AI parser. This is plain geometry from pdf.js's own
+  // output — no extra library, no AI call — and it's the main lever for
+  // extraction quality on typical (non-scanned) resume PDFs.
+  function pageTextToLines(content) {
+    var Y_TOLERANCE = 3;
+    var lines = [];
+    content.items.forEach(function (it) {
+      if (!it.str) return;
+      var x = it.transform[4], y = it.transform[5];
+      var line = null;
+      for (var i = 0; i < lines.length; i++) {
+        if (Math.abs(lines[i].y - y) <= Y_TOLERANCE) { line = lines[i]; break; }
+      }
+      if (!line) { line = { y: y, items: [] }; lines.push(line); }
+      line.items.push({ x: x, str: it.str });
+    });
+    lines.sort(function (a, b) { return b.y - a.y; }); // PDF y-axis grows upward
+    return lines
+      .map(function (l) {
+        l.items.sort(function (a, b) { return a.x - b.x; });
+        return l.items.map(function (i) { return i.str; }).join(" ").replace(/\s+/g, " ").trim();
+      })
+      .filter(Boolean)
+      .join("\n");
   }
 
   function extractPdfText(file) {
@@ -1436,11 +1581,11 @@
     }).then(function (pdf) {
       var text = "", pageNum = 1;
       function nextPage() {
-        if (pageNum > pdf.numPages || text.length > 15000) return Promise.resolve(text);
+        if (pageNum > pdf.numPages || text.length > 20000) return Promise.resolve(text);
         return pdf.getPage(pageNum).then(function (page) {
           return page.getTextContent();
         }).then(function (content) {
-          text += content.items.map(function (it) { return it.str; }).join(" ") + "\n";
+          text += pageTextToLines(content) + "\n\n";
           pageNum++;
           return nextPage();
         });
