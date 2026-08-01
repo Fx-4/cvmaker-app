@@ -119,6 +119,14 @@
   .drag-handle { cursor: grab; color: hsl(var(--muted-foreground)); font-size: 13px; margin-right: 7px; user-select: none; }
   .drag-handle:active { cursor: grabbing; }
   .item-tools { display: flex; gap: 4px; }
+
+  .section-order-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+  .sec-order-row { display: flex; align-items: center; gap: 4px; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 8px 10px; background: hsl(var(--background)); font-size: 12.5px; transition: opacity .15s, border-color .15s, box-shadow .15s; }
+  .sec-order-row.dragging { opacity: .4; }
+  .sec-order-row.drag-over { border-color: hsl(var(--ring)); box-shadow: 0 0 0 2px hsl(var(--ring) / .25); }
+  .sec-order-label { flex: 1; font-weight: 500; }
+  .sec-order-count { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+  .section-order-note { font-family: var(--font-mono); font-size: 10px; color: hsl(var(--muted-foreground)); }
   .add-btn { display: inline-flex; align-items: center; gap: 6px; width: 100%; justify-content: center; height: 38px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--background)); color: hsl(var(--muted-foreground)); font-family: var(--font-sans); font-size: 12.5px; font-weight: 500; cursor: pointer; transition: border-color .15s, color .15s, background .15s; }
   .add-btn:hover { border-color: hsl(var(--ring)); color: hsl(var(--foreground)); background: hsl(var(--secondary)); }
 
@@ -663,6 +671,11 @@
           </div>
         </div>
         <div class="group">
+          <div class="group-head"><h3 data-i18n="grpSectionOrder">Section order</h3><span class="hint" data-i18n="hintDrag">drag to reorder</span></div>
+          <div id="sectionOrderList" class="section-order-list"></div>
+          <div class="section-order-note" id="sectionOrderNote" data-i18n="sectionOrderHaikalNote">Note: the "ATS Kompak" theme has a fixed layout and ignores this order.</div>
+        </div>
+        <div class="group">
           <div class="group-head"><h3 data-i18n="grpPersonal">Personal info</h3></div>
           <div class="field">
             <label class="lab" data-i18n="fPhoto">Profile photo</label>
@@ -813,6 +826,7 @@
       btnSample:"Load example CV", btnReset:"Clear", btnPrint:"Print / PDF", improveAllBtn:"Improve All", aiImproveBtn:"AI improve", tplLabel:"Template",
       step1:"Profile", step2:"Work Experience", step3:"Orgs, Education & Achievements", step4:"Skills & Projects", step5:"ATS Guide",
       grpPersonal:"Personal info", grpContact:"Contacts & links", grpImport:"Import existing CV", hintOptional:"optional",
+      grpSectionOrder:"Section order", hintDrag:"drag to reorder", sectionOrderHaikalNote:'Note: the "ATS Kompak" theme has a fixed layout and ignores this order.',
       dzTitle:"Drop your old CV (PDF)", dzOr:"here, or", dzLink:"browse", dzSub:"AI will read it and fill in the form for you",
       fPhoto:"Profile photo", photoPick:"Choose photo", photoRemove:"Remove",
       fPhotoBg:"Background", optBgTrans:"Transparent", optBgWhite:"White", optBgMuted:"Gray",
@@ -837,6 +851,7 @@
       btnSample:"Muat contoh CV", btnReset:"Hapus semua", btnPrint:"Cetak / PDF", improveAllBtn:"Perbaiki Semua", aiImproveBtn:"Perbaiki dg AI", tplLabel:"Template",
       step1:"Profil", step2:"Pengalaman Kerja", step3:"Organisasi, Pendidikan & Prestasi", step4:"Keahlian & Proyek", step5:"Panduan ATS",
       grpPersonal:"Info pribadi", grpContact:"Kontak & tautan", grpImport:"Impor CV lama", hintOptional:"opsional",
+      grpSectionOrder:"Urutan section", hintDrag:"geser untuk mengatur urutan", sectionOrderHaikalNote:'Catatan: tema "ATS Kompak" punya tata letak tetap dan mengabaikan urutan ini.',
       dzTitle:"Tarik CV lama kamu (PDF)", dzOr:"ke sini, atau", dzLink:"pilih file", dzSub:"AI akan membaca dan mengisi formulir untuk kamu",
       fPhoto:"Foto profil", photoPick:"Pilih foto", photoRemove:"Hapus",
       fPhotoBg:"Latar belakang", optBgTrans:"Transparan", optBgWhite:"Putih", optBgMuted:"Abu-abu",
@@ -887,15 +902,29 @@
   };
   function ph(k) { return (PH[k] && (PH[k][state.lang] || PH[k].en)) || ""; }
 
+  var DEFAULT_SECTION_ORDER = ["work", "org", "education", "proj", "skills", "ach"];
+  function normalizeSectionOrder(order) {
+    if (!Array.isArray(order)) return DEFAULT_SECTION_ORDER.slice();
+    var seen = {};
+    var out = order.filter(function (k) {
+      if (seen[k] || DEFAULT_SECTION_ORDER.indexOf(k) === -1) return false;
+      seen[k] = true; return true;
+    });
+    DEFAULT_SECTION_ORDER.forEach(function (k) { if (!seen[k]) out.push(k); });
+    return out;
+  }
+
   function blank() {
     return { lang:"en", theme:"ats", usingSample:false, photo:"", photoBg:"transparent",
       name:"", role:"", about:"", location:"", email:"", phone:"", linkedin:"", github:"", instagram:"", website:"",
+      sectionOrder: DEFAULT_SECTION_ORDER.slice(),
       work:[], org:[], education:[], ach:[], skills:[], proj:[] };
   }
 
   function sampleData(lang) {
     return {
       lang: lang === "id" ? "id" : "en", theme: "ats", usingSample: true, photo: "", photoBg: "transparent",
+      sectionOrder: DEFAULT_SECTION_ORDER.slice(),
       name: "Jordan Avery",
       role: "Fullstack Web Developer",
       about: "Computer Science graduate with a focus on building reliable, user-friendly web applications from front end to back end. Comfortable working across the stack, collaborating with cross-functional teams, and shipping features end to end. Enjoys turning ambiguous requirements into clean, maintainable code.",
@@ -943,6 +972,7 @@
         ["work", "org", "education", "ach", "skills", "proj"].forEach(function (k) {
           if (!Array.isArray(merged[k])) merged[k] = [];
         });
+        merged.sectionOrder = normalizeSectionOrder(merged.sectionOrder);
         return merged;
       }
     } catch (e) {}
@@ -1116,65 +1146,70 @@
         left += '<section class="r-side-section"><h3>' + esc(T("secSkill")) + '</h3><div class="r-skill-grid">' + s.skills.map(function (k) { return '<span class="r-badge">' + esc(k) + "</span>"; }).join("") + "</div></section>";
       }
 
-      var right = "";
-
-      if (s.work && s.work.length) {
-        right += '<section class="r-section"><h2>' + esc(T("secWork")) + "</h2>";
-        s.work.forEach(function (w) {
-          right += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(w.role) || "—") + '<span class="at"> · ' + esc(w.org || "") + "</span>" + certCheck(w.cert) + "</div>";
-          right += '<div class="r-period">' + esc(period(w.start, w.end)) + "</div></div>";
-          if (w.summary) right += '<div class="r-desc">' + esc(w.summary) + "</div>";
-          right += "</div>";
-        });
-        right += "</section>";
-      }
-
-      if (s.org.length) {
-        right += '<section class="r-section"><h2>' + esc(T("secOrg")) + "</h2>";
-        s.org.forEach(function (o) {
-          right += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(o.role) || "—") + '<span class="at"> · ' + esc(o.org || "") + "</span>" + certCheck(o.cert) + "</div>";
-          right += '<div class="r-period">' + esc(period(o.start, o.end)) + "</div></div>";
-          if (o.summary) right += '<div class="r-desc">' + esc(o.summary) + "</div>";
-          right += "</div>";
-        });
-        right += "</section>";
-      }
-
-      if (s.education && s.education.length) {
-        right += '<section class="r-section"><h2>' + esc(T("secEdu")) + "</h2>";
-        s.education.forEach(function (e) {
-          right += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(e.school) || "—") + (e.degree ? '<span class="at"> · ' + esc(e.degree) + "</span>" : "") + certCheck(e.cert) + "</div>";
-          right += '<div class="r-period">' + esc(period(e.start, e.end)) + (e.location ? " · " + esc(e.location) : "") + "</div></div>";
-          if (e.summary) right += '<div class="r-desc">' + esc(e.summary) + "</div>";
-          right += "</div>";
-        });
-        right += "</section>";
-      }
-
-      if (s.proj.length) {
-        var projs = s.proj.slice().sort(function (a, b) { return (b.featured ? 1 : 0) - (a.featured ? 1 : 0); });
-        right += '<section class="r-section"><h2>' + esc(T("secProj")) + '</h2><div class="r-projects-grid">';
-        projs.forEach(function (p) {
-          right += '<div class="r-proj"><div class="r-entry-head"><div class="r-entry-title">' + (esc(p.name) || "—") + (p.link ? '<span class="link-dot"></span>' : "") + (p.featured ? '<span class="feat">' + esc(T("featuredTag")) + "</span>" : "") + "</div>";
-          if (p.role) right += '<div class="r-period" style="margin-top:2px">' + esc(p.role) + "</div>";
-          else if (p.link) right += '<div class="r-period" style="margin-top:2px">' + esc(short(p.link)) + "</div>";
-          right += "</div>";
-          if (p.summary) right += '<div class="r-desc">' + esc(p.summary) + "</div>";
-          if (p.tech && p.tech.length) right += '<div class="r-badges">' + p.tech.map(function (t) { return '<span class="r-badge">' + esc(t) + "</span>"; }).join("") + "</div>";
-          right += "</div>";
-        });
-        right += "</div></section>";
-      }
-
-      if (s.ach.length) {
-        right += '<section class="r-section"><h2>' + esc(T("secAch")) + "</h2>";
-        s.ach.forEach(function (a) {
-          right += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(a.title) || "—") + certCheck(a.cert) + '</div><div class="r-period">' + esc(a.year || "") + "</div></div>";
-          if (a.summary) right += '<div class="r-desc">' + esc(a.summary) + "</div>";
-          right += "</div>";
-        });
-        right += "</section>";
-      }
+      var sidebarSection = {
+        work: function () {
+          if (!s.work.length) return "";
+          var h = '<section class="r-section"><h2>' + esc(T("secWork")) + "</h2>";
+          s.work.forEach(function (w) {
+            h += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(w.role) || "—") + '<span class="at"> · ' + esc(w.org || "") + "</span>" + certCheck(w.cert) + "</div>";
+            h += '<div class="r-period">' + esc(period(w.start, w.end)) + "</div></div>";
+            if (w.summary) h += '<div class="r-desc">' + esc(w.summary) + "</div>";
+            h += "</div>";
+          });
+          return h + "</section>";
+        },
+        org: function () {
+          if (!s.org.length) return "";
+          var h = '<section class="r-section"><h2>' + esc(T("secOrg")) + "</h2>";
+          s.org.forEach(function (o) {
+            h += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(o.role) || "—") + '<span class="at"> · ' + esc(o.org || "") + "</span>" + certCheck(o.cert) + "</div>";
+            h += '<div class="r-period">' + esc(period(o.start, o.end)) + "</div></div>";
+            if (o.summary) h += '<div class="r-desc">' + esc(o.summary) + "</div>";
+            h += "</div>";
+          });
+          return h + "</section>";
+        },
+        education: function () {
+          if (!s.education.length) return "";
+          var h = '<section class="r-section"><h2>' + esc(T("secEdu")) + "</h2>";
+          s.education.forEach(function (e) {
+            h += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(e.school) || "—") + (e.degree ? '<span class="at"> · ' + esc(e.degree) + "</span>" : "") + certCheck(e.cert) + "</div>";
+            h += '<div class="r-period">' + esc(period(e.start, e.end)) + (e.location ? " · " + esc(e.location) : "") + "</div></div>";
+            if (e.summary) h += '<div class="r-desc">' + esc(e.summary) + "</div>";
+            h += "</div>";
+          });
+          return h + "</section>";
+        },
+        proj: function () {
+          if (!s.proj.length) return "";
+          var projs = s.proj.slice().sort(function (a, b) { return (b.featured ? 1 : 0) - (a.featured ? 1 : 0); });
+          var h = '<section class="r-section"><h2>' + esc(T("secProj")) + '</h2><div class="r-projects-grid">';
+          projs.forEach(function (p) {
+            h += '<div class="r-proj"><div class="r-entry-head"><div class="r-entry-title">' + (esc(p.name) || "—") + (p.link ? '<span class="link-dot"></span>' : "") + (p.featured ? '<span class="feat">' + esc(T("featuredTag")) + "</span>" : "") + "</div>";
+            if (p.role) h += '<div class="r-period" style="margin-top:2px">' + esc(p.role) + "</div>";
+            else if (p.link) h += '<div class="r-period" style="margin-top:2px">' + esc(short(p.link)) + "</div>";
+            h += "</div>";
+            if (p.summary) h += '<div class="r-desc">' + esc(p.summary) + "</div>";
+            if (p.tech && p.tech.length) h += '<div class="r-badges">' + p.tech.map(function (t) { return '<span class="r-badge">' + esc(t) + "</span>"; }).join("") + "</div>";
+            h += "</div>";
+          });
+          return h + "</div></section>";
+        },
+        ach: function () {
+          if (!s.ach.length) return "";
+          var h = '<section class="r-section"><h2>' + esc(T("secAch")) + "</h2>";
+          s.ach.forEach(function (a) {
+            h += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(a.title) || "—") + certCheck(a.cert) + '</div><div class="r-period">' + esc(a.year || "") + "</div></div>";
+            if (a.summary) h += '<div class="r-desc">' + esc(a.summary) + "</div>";
+            h += "</div>";
+          });
+          return h + "</section>";
+        },
+        skills: function () { return ""; } // rendered in the left column instead — not part of this order
+      };
+      // "skills" lives in the left column (with contact) for this theme, so it's
+      // excluded from the reorderable right-column section order.
+      var right = s.sectionOrder.filter(function (k) { return k !== "skills"; }).map(function (k) { return sidebarSection[k] ? sidebarSection[k]() : ""; }).join("");
 
       html = '<div class="r-sidebar-layout"><aside class="r-sidebar-left">' + left + '</aside><main class="r-sidebar-right">' + right + "</main></div>";
     } else {
@@ -1186,81 +1221,136 @@
       if (contact.length) html += '<div class="r-contact">' + (useIcons ? contact.join("") : contact.join('<span class="sep">|</span>')) + "</div>";
       html += "</div>" + av + "</header>";
 
-      if (s.work && s.work.length) {
-        html += '<section class="r-section"><h2>' + esc(T("secWork")) + "</h2>";
-        s.work.forEach(function (w) {
-          html += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(w.role) || "—") + '<span class="at"> · ' + esc(w.org || "") + "</span>" + certCheck(w.cert) + "</div>";
-          html += '<div class="r-period">' + esc(period(w.start, w.end)) + "</div></div>";
-          if (w.summary) html += '<div class="r-desc">' + esc(w.summary) + "</div>";
-          html += "</div>";
-        });
-        html += "</section>";
-      }
-
-      if (s.org.length) {
-        html += '<section class="r-section"><h2>' + esc(T("secOrg")) + "</h2>";
-        s.org.forEach(function (o) {
-          html += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(o.role) || "—") + '<span class="at"> · ' + esc(o.org || "") + "</span>" + certCheck(o.cert) + "</div>";
-          html += '<div class="r-period">' + esc(period(o.start, o.end)) + "</div></div>";
-          if (o.summary) html += '<div class="r-desc">' + esc(o.summary) + "</div>";
-          html += "</div>";
-        });
-        html += "</section>";
-      }
-
-      if (s.education && s.education.length) {
-        html += '<section class="r-section"><h2>' + esc(T("secEdu")) + "</h2>";
-        s.education.forEach(function (e) {
-          html += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(e.school) || "—") + (e.degree ? '<span class="at"> · ' + esc(e.degree) + "</span>" : "") + certCheck(e.cert) + "</div>";
-          html += '<div class="r-period">' + esc(period(e.start, e.end)) + (e.location ? " · " + esc(e.location) : "") + "</div></div>";
-          if (e.summary) html += '<div class="r-desc">' + esc(e.summary) + "</div>";
-          html += "</div>";
-        });
-        html += "</section>";
-      }
-
-      if (s.proj.length) {
-        var projs = s.proj.slice().sort(function (a, b) { return (b.featured ? 1 : 0) - (a.featured ? 1 : 0); });
-        html += '<section class="r-section"><h2>' + esc(T("secProj")) + '</h2><div class="r-projects-grid">';
-        projs.forEach(function (p) {
-          if (isAts) {
-            html += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(p.name) || "—") + (p.link ? ' · <a href="' + esc(href(p.link)) + '" target="_blank" rel="noopener">' + esc(short(p.link)) + '</a>' : "") + (p.role ? ' <span style="font-weight: 500; font-size: 11.5px; color: hsl(var(--muted-foreground));">(' + esc(p.role) + ')</span>' : "") + "</div></div>";
-            if (p.summary) html += '<div class="r-desc">' + esc(p.summary) + "</div>";
-            if (p.tech && p.tech.length) html += '<div class="r-desc" style="margin-top: 3px; font-weight: 500;">Technologies: ' + p.tech.map(esc).join(", ") + "</div>";
-            html += "</div>";
-          } else {
-            html += '<div class="r-proj"><div class="r-entry-head"><div class="r-entry-title">' + (esc(p.name) || "—") + (p.link ? '<span class="link-dot"></span>' : "") + (p.featured ? '<span class="feat">' + esc(T("featuredTag")) + "</span>" : "") + "</div>";
-            if (p.role) html += '<div class="r-period" style="margin-top:2px">' + esc(p.role) + "</div>";
-            else if (p.link) html += '<div class="r-period" style="margin-top:2px">' + esc(short(p.link)) + "</div>";
-            html += "</div>";
-            if (p.summary) html += '<div class="r-desc">' + esc(p.summary) + "</div>";
-            if (p.tech && p.tech.length) html += '<div class="r-badges">' + p.tech.map(function (t) { return '<span class="r-badge">' + esc(t) + "</span>"; }).join("") + "</div>";
-            html += "</div>";
-          }
-        });
-        html += "</div></section>";
-      }
-
-      if (s.skills.length) {
-        if (isAts) {
-          html += '<section class="r-section"><h2>' + esc(T("secSkill")) + '</h2><div class="r-skill-list">' + s.skills.map(esc).join(", ") + "</div></section>";
-        } else {
-          html += '<section class="r-section"><h2>' + esc(T("secSkill")) + '</h2><div class="r-skill-grid">' + s.skills.map(function (k) { return '<span class="r-badge">' + esc(k) + "</span>"; }).join("") + "</div></section>";
+      var genericSection = {
+        work: function () {
+          if (!s.work.length) return "";
+          var h = '<section class="r-section"><h2>' + esc(T("secWork")) + "</h2>";
+          s.work.forEach(function (w) {
+            h += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(w.role) || "—") + '<span class="at"> · ' + esc(w.org || "") + "</span>" + certCheck(w.cert) + "</div>";
+            h += '<div class="r-period">' + esc(period(w.start, w.end)) + "</div></div>";
+            if (w.summary) h += '<div class="r-desc">' + esc(w.summary) + "</div>";
+            h += "</div>";
+          });
+          return h + "</section>";
+        },
+        org: function () {
+          if (!s.org.length) return "";
+          var h = '<section class="r-section"><h2>' + esc(T("secOrg")) + "</h2>";
+          s.org.forEach(function (o) {
+            h += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(o.role) || "—") + '<span class="at"> · ' + esc(o.org || "") + "</span>" + certCheck(o.cert) + "</div>";
+            h += '<div class="r-period">' + esc(period(o.start, o.end)) + "</div></div>";
+            if (o.summary) h += '<div class="r-desc">' + esc(o.summary) + "</div>";
+            h += "</div>";
+          });
+          return h + "</section>";
+        },
+        education: function () {
+          if (!s.education.length) return "";
+          var h = '<section class="r-section"><h2>' + esc(T("secEdu")) + "</h2>";
+          s.education.forEach(function (e) {
+            h += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(e.school) || "—") + (e.degree ? '<span class="at"> · ' + esc(e.degree) + "</span>" : "") + certCheck(e.cert) + "</div>";
+            h += '<div class="r-period">' + esc(period(e.start, e.end)) + (e.location ? " · " + esc(e.location) : "") + "</div></div>";
+            if (e.summary) h += '<div class="r-desc">' + esc(e.summary) + "</div>";
+            h += "</div>";
+          });
+          return h + "</section>";
+        },
+        proj: function () {
+          if (!s.proj.length) return "";
+          var projs = s.proj.slice().sort(function (a, b) { return (b.featured ? 1 : 0) - (a.featured ? 1 : 0); });
+          var h = '<section class="r-section"><h2>' + esc(T("secProj")) + '</h2><div class="r-projects-grid">';
+          projs.forEach(function (p) {
+            if (isAts) {
+              h += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(p.name) || "—") + (p.link ? ' · <a href="' + esc(href(p.link)) + '" target="_blank" rel="noopener">' + esc(short(p.link)) + '</a>' : "") + (p.role ? ' <span style="font-weight: 500; font-size: 11.5px; color: hsl(var(--muted-foreground));">(' + esc(p.role) + ')</span>' : "") + "</div></div>";
+              if (p.summary) h += '<div class="r-desc">' + esc(p.summary) + "</div>";
+              if (p.tech && p.tech.length) h += '<div class="r-desc" style="margin-top: 3px; font-weight: 500;">Technologies: ' + p.tech.map(esc).join(", ") + "</div>";
+              h += "</div>";
+            } else {
+              h += '<div class="r-proj"><div class="r-entry-head"><div class="r-entry-title">' + (esc(p.name) || "—") + (p.link ? '<span class="link-dot"></span>' : "") + (p.featured ? '<span class="feat">' + esc(T("featuredTag")) + "</span>" : "") + "</div>";
+              if (p.role) h += '<div class="r-period" style="margin-top:2px">' + esc(p.role) + "</div>";
+              else if (p.link) h += '<div class="r-period" style="margin-top:2px">' + esc(short(p.link)) + "</div>";
+              h += "</div>";
+              if (p.summary) h += '<div class="r-desc">' + esc(p.summary) + "</div>";
+              if (p.tech && p.tech.length) h += '<div class="r-badges">' + p.tech.map(function (t) { return '<span class="r-badge">' + esc(t) + "</span>"; }).join("") + "</div>";
+              h += "</div>";
+            }
+          });
+          return h + "</div></section>";
+        },
+        skills: function () {
+          if (!s.skills.length) return "";
+          if (isAts) return '<section class="r-section"><h2>' + esc(T("secSkill")) + '</h2><div class="r-skill-list">' + s.skills.map(esc).join(", ") + "</div></section>";
+          return '<section class="r-section"><h2>' + esc(T("secSkill")) + '</h2><div class="r-skill-grid">' + s.skills.map(function (k) { return '<span class="r-badge">' + esc(k) + "</span>"; }).join("") + "</div></section>";
+        },
+        ach: function () {
+          if (!s.ach.length) return "";
+          var h = '<section class="r-section"><h2>' + esc(T("secAch")) + "</h2>";
+          s.ach.forEach(function (a) {
+            h += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(a.title) || "—") + certCheck(a.cert) + '</div><div class="r-period">' + esc(a.year || "") + "</div></div>";
+            if (a.summary) h += '<div class="r-desc">' + esc(a.summary) + "</div>";
+            h += "</div>";
+          });
+          return h + "</section>";
         }
-      }
-
-      if (s.ach.length) {
-        html += '<section class="r-section"><h2>' + esc(T("secAch")) + "</h2>";
-        s.ach.forEach(function (a) {
-          html += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(a.title) || "—") + certCheck(a.cert) + '</div><div class="r-period">' + esc(a.year || "") + "</div></div>";
-          if (a.summary) html += '<div class="r-desc">' + esc(a.summary) + "</div>";
-          html += "</div>";
-        });
-        html += "</section>";
-      }
+      };
+      html += s.sectionOrder.map(function (k) { return genericSection[k] ? genericSection[k]() : ""; }).join("");
     }
 
     document.getElementById("page").innerHTML = html;
+    // renderPreview() runs after every state change anywhere in the app (add/
+    // remove/reorder/edit/AI actions/language/theme), so piggybacking the
+    // section-order list's item counts and Haikal-note visibility on it here
+    // keeps them in sync everywhere without hooking every individual mutation
+    // site across five separate list managers.
+    renderSectionOrderList();
+  }
+
+  var SECTION_LABEL_KEY = { work: "secWork", org: "secOrg", education: "secEdu", proj: "secProj", skills: "secSkill", ach: "secAch" };
+  function sectionItemCount(key) { return key === "skills" ? state.skills.length : (state[key] || []).length; }
+  function renderSectionOrderList() {
+    var mount = document.getElementById("sectionOrderList");
+    if (!mount) return;
+    mount.innerHTML = "";
+    var dragSrcKey = null;
+    state.sectionOrder.forEach(function (key) {
+      var row = document.createElement("div");
+      row.className = "sec-order-row";
+      row.draggable = true;
+      row.innerHTML = '<span class="drag-handle" title="Drag to reorder">⠿</span><span class="sec-order-label">' + esc(T(SECTION_LABEL_KEY[key] || key)) + '</span><span class="sec-order-count">' + sectionItemCount(key) + "</span>";
+      mount.appendChild(row);
+
+      row.addEventListener("dragstart", function (e) {
+        dragSrcKey = key;
+        row.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        try { e.dataTransfer.setData("text/plain", key); } catch (err) {}
+      });
+      row.addEventListener("dragend", function () {
+        row.classList.remove("dragging");
+        mount.querySelectorAll(".sec-order-row.drag-over").forEach(function (el) { el.classList.remove("drag-over"); });
+      });
+      row.addEventListener("dragover", function (e) {
+        if (!dragSrcKey) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        row.classList.add("drag-over");
+      });
+      row.addEventListener("dragleave", function () { row.classList.remove("drag-over"); });
+      row.addEventListener("drop", function (e) {
+        e.preventDefault();
+        row.classList.remove("drag-over");
+        if (!dragSrcKey || dragSrcKey === key) return;
+        var srcIdx = state.sectionOrder.indexOf(dragSrcKey);
+        var dstIdx = state.sectionOrder.indexOf(key);
+        if (srcIdx === -1 || dstIdx === -1) return;
+        state.sectionOrder.splice(srcIdx, 1);
+        state.sectionOrder.splice(dstIdx, 0, dragSrcKey);
+        dragSrcKey = null;
+        touched(); renderPreview(); scheduleSave(); // renderPreview() re-renders this list too
+      });
+    });
+    var note = document.getElementById("sectionOrderNote");
+    if (note) note.style.display = state.theme === "haikal" ? "block" : "none";
   }
 
   // ---------- Editor lists ----------
