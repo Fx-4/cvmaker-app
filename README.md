@@ -3,16 +3,34 @@
 A free, ATS-friendly resume/CV builder. No login, no accounts — data is kept
 in your browser (`localStorage`) only. Includes:
 
-- A "✨ AI improve" button per section (summary, each work/org/education/
-  achievement/project description) plus a "✨ Improve All" bulk action.
+- A dedicated **Work Experience** section (separate from Organizational
+  Experience), across a 5-step editor: Profile → Work Experience →
+  Organizations/Education/Achievements → Skills & Projects → ATS Guide.
+- A "✨ AI improve" button per section, plus a "✨ Improve All" bulk action.
+  Rewrite prompts favor detailed, keyword-rich bullet points over a
+  condensed summary (common ATS-screener behavior, especially in Indonesia),
+  with a strict rule against inventing facts not in the source text.
+- A "• Bullets" button on every description field to reformat lines as
+  bullet points, plus auto-continuing bullets on Enter.
+- Drag-and-drop reordering of list items (desktop/mouse) with ↑/↓ buttons
+  as the reliable fallback on touch devices.
+- Bilingual UI — English / Bahasa Indonesia toggle in the top bar, covering
+  all labels, buttons, and CV section headers (not the CV content itself,
+  which stays as the user typed it).
 - A chat assistant that can review/rewrite any part of the CV — it asks
   clarifying questions instead of guessing, shows every proposed change as a
   before/after preview the user must explicitly approve, and every applied
   change can be undone.
 - Drag-and-drop import of an existing CV (PDF) — text is extracted
-  client-side, then parsed into the form by AI.
+  client-side (position-aware line reconstruction from pdf.js, not just a
+  single space-joined blob), then parsed into the form by AI.
 - Several ATS-safe templates, grouped as "Recommended for Indonesia" vs
-  "International" in the template picker.
+  "International" in the template picker, with a first-visit highlight so
+  the picker isn't just an easy-to-miss unlabeled dropdown.
+- Example placeholder text in empty fields (e.g. "e.g. Jane Doe") so a
+  first-time user can tell what belongs where.
+- Responsive layout: sidebar (editor + preview side-by-side) on desktop and
+  tablet, stacked on mobile, with breakpoints tuned for phone S/M/L widths.
 
 All AI features are powered by a serverless function that tries Groq, then
 Mistral, then OpenRouter (free model) as a last resort.

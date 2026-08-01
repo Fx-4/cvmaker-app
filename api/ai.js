@@ -51,13 +51,14 @@ const PROMPTS = {
 const PARSE_SCHEMA_HINT = `Extract structured resume data from the raw text below into STRICT JSON only (no markdown, no code fences, no explanation, no trailing commas). Use this exact shape — omit nothing, use "" or [] for anything not found:
 {
   "name": "", "role": "", "about": "", "location": "", "email": "", "phone": "", "linkedin": "", "github": "", "instagram": "", "website": "",
+  "work": [{"org":"","role":"","start":"","end":"","cert":"","summary":""}],
   "org": [{"org":"","role":"","start":"","end":"","cert":"","summary":""}],
   "education": [{"school":"","degree":"","start":"","end":"","location":"","cert":"","summary":""}],
   "ach": [{"title":"","year":"","cert":"","summary":""}],
   "skills": ["skill1","skill2"],
   "proj": [{"name":"","role":"","link":"","summary":"","tech":["tech1"],"featured":false}]
 }
-Rules: "org" = organizational/work experience entries. Keep dates in the format found in the source (e.g. "Jan 2022"). Leave "cert"/"link" empty unless an explicit URL is present in the source. Output valid JSON and nothing else.`;
+Rules: "work" = paid employment / job history (the "org" field inside each item holds the employer/company name). "org" = organizational/volunteer/extracurricular experience, kept separate from paid work — do not mix the two. Keep dates in the format found in the source (e.g. "Jan 2022"). Leave "cert"/"link" empty unless an explicit URL is present in the source. Output valid JSON and nothing else.`;
 
 const CHAT_SYSTEM_PROMPT = `You are an in-app AI assistant embedded in "CV Builder", a resume/CV editor. The user chats with you in natural language (reply in whatever language the user writes in — Indonesian or English) to review, rewrite, or restructure parts of their CV.
 
@@ -80,12 +81,12 @@ Rules:
   "suggestions": ["Rewrite entirely", "Just make it shorter", "Add more detail"]
 }
 "actions" must be [] when you are only asking a question or chatting.
-For "type":"update": "path" must be one of: name, role, about, location, email, phone, linkedin, github, instagram, website, skills (value must be an array of strings), or "org.<index>.<field>" / "education.<index>.<field>" / "ach.<index>.<field>" / "proj.<index>.<field>" — using an existing index from the CV JSON given to you.
-For "type":"add": set "key" to one of org/education/ach/proj and "value" to a full new object matching that section's item shape (see the CV JSON for the shape), to append a brand-new entry.
+For "type":"update": "path" must be one of: name, role, about, location, email, phone, linkedin, github, instagram, website, skills (value must be an array of strings), or "work.<index>.<field>" / "org.<index>.<field>" / "education.<index>.<field>" / "ach.<index>.<field>" / "proj.<index>.<field>" — using an existing index from the CV JSON given to you. "work" = paid employment, "org" = organizational/volunteer experience — keep them separate.
+For "type":"add": set "key" to one of work/org/education/ach/proj and "value" to a full new object matching that section's item shape (see the CV JSON for the shape), to append a brand-new entry.
 "suggestions" is a list of up to 4 short (a few words each) tappable reply options for the user, matching the options you listed in "reply" — use [] when there's nothing sensible to suggest (e.g. a fully open-ended question).`;
 
 const SCALAR_PATHS = new Set(["name", "role", "about", "location", "email", "phone", "linkedin", "github", "instagram", "website", "skills"]);
-const ARRAY_KEYS = new Set(["org", "education", "ach", "proj"]);
+const ARRAY_KEYS = new Set(["work", "org", "education", "ach", "proj"]);
 const PATH_RE = /^([a-zA-Z]+)(?:\.(\d+)\.([a-zA-Z]+))?$/;
 
 function getClientIp(req) {
