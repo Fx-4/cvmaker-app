@@ -36,15 +36,21 @@ in your browser (`localStorage`) only. Includes:
   within one. Not available on the "ATS Kompak" (Haikal) theme, which has a
   fixed PDF-replica layout.
 - **Quick PDF Edit** (`pdf-edit.html`) — a separate tool linked from the
-  import dropzone for small fixes (a typo, a date) directly on an existing
-  PDF, without re-entering everything into the form. Click any text in the
-  rendered PDF, edit it inline, download the result. It's still an overlay
-  edit (cover the old text, draw the new text at the same spot via
-  pdf-lib) — no reflow, so it's meant for one or two words, not a rewrite.
-  Two things it does try to get right: it reuses the PDF's own embedded
-  font when it can find and match one (falling back to a standard font
-  otherwise), and it samples the actual background/text color from the
-  rendered page instead of assuming white-on-black.
+  import dropzone for small fixes (a typo, a date, a missing line) directly
+  on an existing PDF, without re-entering everything into the form. Click
+  any text in the rendered PDF to edit it inline, or toggle "✚ Add Text" to
+  click blank space and type something new, then download the result. It's
+  still an overlay edit (cover the old text / draw new text at the click
+  point via pdf-lib) — no reflow, so it's meant for small fixes, not a
+  rewrite. For edits to *existing* text, it reuses the PDF's own embedded
+  font when it can find, match, **and confirm the font actually has every
+  character in the replacement** (subsetted fonts — which is what a PDF's
+  embedded font almost always is — only contain the glyphs the original
+  document used; drawing an unsupported character with pdf-lib doesn't
+  error, it silently renders a blank box, so this has to be checked before
+  drawing) and samples the actual background/text color from the rendered
+  page instead of assuming white-on-black. Added text always uses a
+  standard font, since there's no original to match.
 
 All AI features are powered by a serverless function that tries Groq, then
 Mistral, then OpenRouter (free model) as a last resort.

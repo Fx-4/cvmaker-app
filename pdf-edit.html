@@ -51,6 +51,10 @@
   .workspace { padding: 28px 16px 80px; display: flex; flex-direction: column; align-items: center; gap: 24px; }
   .pdf-page-wrap { position: relative; background: #fff; box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 12px 40px rgba(16,24,40,.12); }
   .pdf-page-wrap canvas { display: block; }
+  .pdf-page-wrap.add-mode { cursor: crosshair; }
+  .pdf-page-wrap.add-mode .text-hit { cursor: text; }
+  #addTextBtn.active { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+  .new-text-hit { min-width: 16px; min-height: 12px; }
 
   .text-hit { position: absolute; cursor: text; border-radius: 2px; }
   .text-hit:hover { outline: 1.5px dashed hsl(var(--ring)); background: hsl(var(--ring) / .07); }
@@ -75,6 +79,7 @@
     </div>
     <div class="topbar-actions">
       <span class="edits-badge" id="editsBadge" hidden>0 edits</span>
+      <button class="btn btn-sm" id="addTextBtn" type="button" hidden title="Click anywhere on the PDF to add new text">✚ Add Text</button>
       <button class="btn btn-sm" id="newFileBtn" type="button" hidden>📄 Open another PDF</button>
       <button class="btn btn-primary btn-sm" id="downloadBtn" type="button" disabled>⬇ Download edited PDF</button>
       <a class="back-link" href="index.html">← Back to CV Builder</a>
@@ -85,7 +90,7 @@
     <div id="pdfDropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload a PDF to edit">
       <div class="dropzone-icon">📄</div>
       <div class="dropzone-text"><strong>Drop a PDF here</strong>, or <span class="dz-link">browse</span></div>
-      <div class="dropzone-sub">Click any piece of text in the rendered PDF to edit it directly — best for small fixes (a typo, a date, a word or two). The tool tries to reuse the PDF's own embedded font and matches the surrounding background/text color, falling back to a standard font when it can't — either way it won't reflow surrounding text. Nothing is uploaded anywhere — this all runs in your browser.</div>
+      <div class="dropzone-sub">Click any piece of text in the rendered PDF to edit it directly, or use "✚ Add Text" to click anywhere blank and type something new — best for small fixes (a typo, a date, a missing line), not a full rewrite. Existing-text edits try to reuse the PDF's own embedded font and match the surrounding colors, falling back to a standard font when a character isn't in that font; added text always uses a standard font. Either way it won't reflow surrounding text. Nothing is uploaded anywhere — this all runs in your browser.</div>
       <input type="file" id="pdfFileInput" accept="application/pdf,.pdf" hidden />
     </div>
   </div>
@@ -110,6 +115,7 @@
   var originalBytes = null; // pristine copy of the uploaded file, used only at export time
   var pdfDoc = null;
   var activePopover = null;
+  var addTextMode = false;
 
   function toast(msg) {
     var t = document.getElementById("toast");
@@ -148,6 +154,7 @@
       document.getElementById("workspace").hidden = false;
       document.getElementById("downloadBtn").disabled = false;
       document.getElementById("newFileBtn").hidden = false;
+      document.getElementById("addTextBtn").hidden = false;
       document.getElementById("editsBadge").hidden = false;
       document.getElementById("editsBadge").textContent = "0 edits";
       renderAllPages();
@@ -180,6 +187,14 @@
       canvas.height = viewport.height;
       wrap.appendChild(canvas);
       container.appendChild(wrap);
+
+      wrap.classList.toggle("add-mode", addTextMode);
+      wrap.addEventListener("click", function (e) {
+        if (!addTextMode) return;
+        if (e.target !== wrap && e.target !== canvas) return; // ignore clicks on existing hits/popovers
+        var rect = wrap.getBoundingClientRect();
+        createNewTextHit(wrap, viewport, pageNum - 1, e.clientX - rect.left, e.clientY - rect.top);
+      });
 
       var ctx = canvas.getContext("2d", { willReadFrequently: true });
       return page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function () {
@@ -300,48 +315,79 @@
     pop.className = "edit-popover";
     pop.style.left = hit.style.left;
     pop.style.top = (parseFloat(hit.style.top) + parseFloat(hit.style.height) + 6) + "px";
+    var canReset = !meta.isNew && meta.newText != null; // existing text: revert to original
+    var canRemove = meta.isNew && meta.newText != null; // added text: no "original" to revert to, only remove
     pop.innerHTML =
-      '<span class="ep-label">Edit text</span>' +
+      '<span class="ep-label">' + (meta.isNew ? "Add text" : "Edit text") + '</span>' +
       '<textarea class="ep-input" rows="2"></textarea>' +
       '<div class="ep-btns">' +
-      (meta.newText != null ? '<button type="button" class="btn btn-sm ep-reset">↺ Reset</button>' : "") +
+      (canReset ? '<button type="button" class="btn btn-sm ep-reset">↺ Reset</button>' : "") +
+      (canRemove ? '<button type="button" class="btn btn-sm ep-reset">🗑 Remove</button>' : "") +
       '<button type="button" class="btn btn-sm ep-cancel">Cancel</button>' +
       '<button type="button" class="btn btn-sm btn-primary ep-save">Save</button>' +
       "</div>";
     var textarea = pop.querySelector(".ep-input");
-    textarea.value = meta.newText != null ? meta.newText : meta.oldText;
+    textarea.value = meta.newText != null ? meta.newText : (meta.isNew ? "" : meta.oldText);
     wrap.appendChild(pop);
     activePopover = pop;
     textarea.focus();
-    textarea.select();
+    if (!meta.isNew) textarea.select();
 
-    pop.querySelector(".ep-cancel").addEventListener("click", closePopover);
+    function cancelOrRemoveIfEmptyNew() {
+      // An "Add text" box that was never actually saved shouldn't leave a
+      // dangling empty hit behind on Cancel.
+      if (meta.isNew && meta.newText == null) hit.remove();
+      closePopover();
+    }
+    pop.querySelector(".ep-cancel").addEventListener("click", cancelOrRemoveIfEmptyNew);
     var resetBtn = pop.querySelector(".ep-reset");
-    if (resetBtn) resetBtn.addEventListener("click", function () { applyEdit(hit, wrap, meta.oldText); closePopover(); });
+    if (resetBtn) {
+      resetBtn.addEventListener("click", function () {
+        if (meta.isNew) { removeNewTextHit(hit); closePopover(); }
+        else { applyEdit(hit, wrap, meta.oldText); closePopover(); }
+      });
+    }
     pop.querySelector(".ep-save").addEventListener("click", function () {
-      applyEdit(hit, wrap, textarea.value);
+      var v = textarea.value;
+      if (meta.isNew && !v.trim()) { removeNewTextHit(hit); closePopover(); return; }
+      applyEdit(hit, wrap, v);
       closePopover();
     });
     textarea.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { applyEdit(hit, wrap, textarea.value); closePopover(); }
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { pop.querySelector(".ep-save").click(); }
     });
+  }
+
+  function removeNewTextHit(hit) {
+    if (hit._overlayEl) hit._overlayEl.remove();
+    hit.remove();
+    updateEditsBadge();
   }
 
   function applyEdit(hit, wrap, newText) {
     var meta = hit._meta;
-    var unchanged = newText === meta.oldText;
+    var unchanged = !meta.isNew && newText === meta.oldText;
     meta.newText = unchanged ? null : newText;
     hit.classList.toggle("edited", !unchanged);
 
     if (hit._overlayEl) { hit._overlayEl.remove(); hit._overlayEl = null; }
     if (!unchanged) {
+      if (meta.isNew) {
+        // A brand-new text box has no real bounding box yet (it was just a
+        // click point) — estimate one from the entered text now, in both
+        // PDF space (for export) and viewport space (for the live overlay).
+        var approxCharWidth = meta.fontSize * 0.55;
+        meta.pdfWidth = Math.max(10, newText.length * approxCharWidth);
+        var newWpx = meta.pdfWidth * RENDER_SCALE;
+        hit.style.width = newWpx + "px";
+      }
       var ov = document.createElement("div");
       ov.className = "text-overlay";
       ov.style.left = hit.style.left;
       ov.style.top = hit.style.top;
       ov.style.width = hit.style.width;
       ov.style.height = hit.style.height;
-      ov.style.background = rgbCss(meta.bgColor);
+      ov.style.background = meta.isNew ? "transparent" : rgbCss(meta.bgColor);
       ov.style.color = rgbCss(meta.textColor);
       ov.style.fontSize = Math.max(8, parseFloat(hit.style.height) * 0.82) + "px";
       ov.style.fontWeight = meta.bold ? "700" : "400";
@@ -351,6 +397,34 @@
       hit._overlayEl = ov;
     }
     updateEditsBadge();
+  }
+
+  function createNewTextHit(wrap, viewport, pageIndex, vx, vy) {
+    var pdfPoint = viewport.convertToPdfPoint(vx, vy);
+    var fontSize = 11;
+    var meta = {
+      pageIndex: pageIndex,
+      pdfX: pdfPoint[0], pdfY: pdfPoint[1] - fontSize * 0.15,
+      pdfWidth: 10, pdfHeight: fontSize * 1.15,
+      fontSize: fontSize,
+      bold: false, italic: false,
+      fontLabel: "", // intentionally empty — nothing to match, always uses a standard font
+      bgColor: { r: 255, g: 255, b: 255 }, textColor: { r: 0, g: 0, b: 0 },
+      oldText: "", newText: null,
+      isNew: true
+    };
+    var topLeft = viewport.convertToViewportPoint(meta.pdfX, meta.pdfY + meta.pdfHeight);
+    var hit = document.createElement("div");
+    hit.className = "text-hit new-text-hit";
+    hit.style.left = topLeft[0] + "px";
+    hit.style.top = topLeft[1] + "px";
+    hit.style.width = "10px";
+    hit.style.height = (meta.pdfHeight * RENDER_SCALE) + "px";
+    hit.title = "Click to edit this added text";
+    hit._meta = meta;
+    hit.addEventListener("click", function (e) { e.stopPropagation(); openEditPopover(hit, wrap); });
+    wrap.appendChild(hit);
+    openEditPopover(hit, wrap);
   }
 
   function pickStdFont(fonts, meta) {
@@ -598,13 +672,22 @@
   });
 
   document.getElementById("downloadBtn").addEventListener("click", exportEditedPdf);
+  document.getElementById("addTextBtn").addEventListener("click", function () {
+    addTextMode = !addTextMode;
+    this.classList.toggle("active", addTextMode);
+    document.querySelectorAll(".pdf-page-wrap").forEach(function (w) { w.classList.toggle("add-mode", addTextMode); });
+    toast(addTextMode ? "Click anywhere on the PDF to add text" : "Add Text mode off");
+  });
   document.getElementById("newFileBtn").addEventListener("click", function () {
     pdfDoc = null; originalBytes = null;
+    addTextMode = false;
+    document.getElementById("addTextBtn").classList.remove("active");
     document.getElementById("pagesContainer").innerHTML = "";
     document.getElementById("workspace").hidden = true;
     document.getElementById("dropStage").hidden = false;
     document.getElementById("downloadBtn").disabled = true;
     document.getElementById("newFileBtn").hidden = true;
+    document.getElementById("addTextBtn").hidden = true;
     document.getElementById("editsBadge").hidden = true;
   });
 })();
