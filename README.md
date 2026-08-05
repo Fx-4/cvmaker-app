@@ -31,6 +31,17 @@ in your browser (`localStorage`) only. Includes:
   first-time user can tell what belongs where.
 - Responsive layout: sidebar (editor + preview side-by-side) on desktop and
   tablet, stacked on mobile, with breakpoints tuned for phone S/M/L widths.
+- Section-order drag-and-drop — reorder whole sections (Work Experience,
+  Organizational, Education, Projects, Skills, Achievements), not just items
+  within one. Not available on the "ATS Kompak" (Haikal) theme, which has a
+  fixed PDF-replica layout.
+- **Quick PDF Edit** (`pdf-edit.html`) — a separate tool linked from the
+  import dropzone for small fixes (a typo, a date) directly on an existing
+  PDF, without re-entering everything into the form. Click any text in the
+  rendered PDF, edit it inline, download the result. It's an overlay edit
+  (white-out the old text, draw new text in a standard font at the same
+  spot via pdf-lib) — good for one or two words, not a perfect font match,
+  and it doesn't reflow surrounding text.
 
 All AI features are powered by a serverless function that tries Groq, then
 Mistral, then OpenRouter (free model) as a last resort.
@@ -38,8 +49,9 @@ Mistral, then OpenRouter (free model) as a last resort.
 ## Project structure
 
 ```
-index.html   — the whole app (static HTML/CSS/JS, no build step)
-api/ai.js    — Vercel serverless function for the AI-assist feature
+index.html     — the CV builder (static HTML/CSS/JS, no build step)
+pdf-edit.html  — standalone quick PDF text-edit tool (see above)
+api/ai.js      — Vercel serverless function for the AI-assist feature
 ```
 
 ## Running locally

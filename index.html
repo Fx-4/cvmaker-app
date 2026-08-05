@@ -469,6 +469,10 @@
   .dropzone-sub { font-size: 11px; color: hsl(var(--muted-foreground)); margin-top: 4px; font-family: var(--font-mono); }
   .dropzone.busy { opacity: .65; pointer-events: none; }
 
+  .quick-edit-hint { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 11px; color: hsl(var(--muted-foreground)); text-align: center; }
+  .quick-edit-hint a { color: hsl(var(--primary)); font-weight: 600; text-decoration: none; }
+  .quick-edit-hint a:hover { text-decoration: underline; }
+
   .ai-budget { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; color: hsl(var(--muted-foreground)); background: hsl(var(--secondary)); border: 1px solid hsl(var(--border)); border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
   .ai-budget::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: hsl(var(--green)); flex: none; }
   .ai-budget.empty { color: hsl(0 72% 42%); }
@@ -668,6 +672,10 @@
               <div class="dropzone-sub" data-i18n="dzSub">AI will read it and fill in the form for you</div>
               <input type="file" id="cvFileInput" accept="application/pdf,.pdf" hidden />
             </div>
+            <div class="quick-edit-hint">
+              <span data-i18n="quickEditHint">Just need to fix a typo or a date?</span>
+              <a href="pdf-edit.html" data-i18n="quickEditLink">Quick-edit the PDF directly →</a>
+            </div>
           </div>
         </div>
         <div class="group">
@@ -828,6 +836,7 @@
       grpPersonal:"Personal info", grpContact:"Contacts & links", grpImport:"Import existing CV", hintOptional:"optional",
       grpSectionOrder:"Section order", hintDrag:"drag to reorder", sectionOrderHaikalNote:'Note: the "ATS Kompak" theme has a fixed layout and ignores this order.',
       dzTitle:"Drop your old CV (PDF)", dzOr:"here, or", dzLink:"browse", dzSub:"AI will read it and fill in the form for you",
+      quickEditHint:"Just need to fix a typo or a date?", quickEditLink:"Quick-edit the PDF directly →",
       fPhoto:"Profile photo", photoPick:"Choose photo", photoRemove:"Remove",
       fPhotoBg:"Background", optBgTrans:"Transparent", optBgWhite:"White", optBgMuted:"Gray",
       fName:"Full name", fRole:"Headline / title", fAbout:"Summary", fLocation:"Location",
@@ -853,6 +862,7 @@
       grpPersonal:"Info pribadi", grpContact:"Kontak & tautan", grpImport:"Impor CV lama", hintOptional:"opsional",
       grpSectionOrder:"Urutan section", hintDrag:"geser untuk mengatur urutan", sectionOrderHaikalNote:'Catatan: tema "ATS Kompak" punya tata letak tetap dan mengabaikan urutan ini.',
       dzTitle:"Tarik CV lama kamu (PDF)", dzOr:"ke sini, atau", dzLink:"pilih file", dzSub:"AI akan membaca dan mengisi formulir untuk kamu",
+      quickEditHint:"Cuma mau benerin typo atau tanggal?", quickEditLink:"Edit langsung PDF-nya →",
       fPhoto:"Foto profil", photoPick:"Pilih foto", photoRemove:"Hapus",
       fPhotoBg:"Latar belakang", optBgTrans:"Transparan", optBgWhite:"Putih", optBgMuted:"Abu-abu",
       fName:"Nama lengkap", fRole:"Jabatan / gelar singkat", fAbout:"Ringkasan", fLocation:"Lokasi",

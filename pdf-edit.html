@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Quick PDF Edit — cvmaker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --background: 0 0% 100%; --foreground: 224 71.4% 4.1%; --card: 0 0% 100%;
+    --primary: 220.9 39.3% 11%; --primary-foreground: 210 20% 98%;
+    --secondary: 220 14.3% 95.9%; --secondary-foreground: 220.9 39.3% 11%;
+    --muted: 220 14.3% 95.9%; --muted-foreground: 220 8.9% 46.1%;
+    --border: 220 13% 91%; --input: 220 13% 91%; --ring: 224 71.4% 4.1%;
+    --green: 142 71% 45%; --radius: 0.5rem;
+    --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, "SF Mono", "Cascadia Code", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { font-family: var(--font-sans); color: hsl(var(--foreground)); background: hsl(220 14.3% 97%); font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 20px; background: hsl(var(--background)); border-bottom: 1px solid hsl(var(--border)); flex-wrap: wrap; position: sticky; top: 0; z-index: 20; }
+  .back-link { font-family: var(--font-mono); font-size: 12px; color: hsl(var(--muted-foreground)); text-decoration: none; }
+  .back-link:hover { color: hsl(var(--foreground)); }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand .mark { width: 30px; height: 30px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-weight: 700; font-size: 15px; }
+  .brand b { font-size: 15px; }
+  .brand span { color: hsl(var(--muted-foreground)); font-family: var(--font-mono); font-size: 11px; }
+  .topbar-actions { display: flex; align-items: center; gap: 10px; }
+
+  .btn { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: calc(var(--radius) - 2px); border: 1px solid hsl(var(--border)); background: hsl(var(--background)); color: hsl(var(--foreground)); font-family: var(--font-sans); font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+  .btn:hover { background: hsl(var(--secondary)); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn-sm { height: 30px; padding: 0 10px; font-size: 12px; }
+  .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+  .btn-primary:hover { background: hsl(220.9 39.3% 17%); }
+
+  .edits-badge { font-family: var(--font-mono); font-size: 11px; color: hsl(var(--muted-foreground)); background: hsl(var(--secondary)); border-radius: 999px; padding: 4px 10px; }
+
+  .drop-stage { display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 58px); padding: 24px; }
+  .dropzone { width: 100%; max-width: 460px; border: 1.5px dashed hsl(var(--border)); border-radius: var(--radius); padding: 40px 24px; text-align: center; cursor: pointer; background: hsl(var(--background)); transition: border-color .15s, background .15s; }
+  .dropzone:hover, .dropzone.dragover { border-color: hsl(var(--ring)); background: hsl(var(--secondary)); }
+  .dropzone-icon { font-size: 32px; margin-bottom: 10px; }
+  .dropzone-text { font-size: 14px; }
+  .dropzone-text .dz-link { color: hsl(var(--primary)); text-decoration: underline; font-weight: 600; }
+  .dropzone-sub { font-size: 11.5px; color: hsl(var(--muted-foreground)); margin-top: 8px; line-height: 1.5; }
+
+  .workspace { padding: 28px 16px 80px; display: flex; flex-direction: column; align-items: center; gap: 24px; }
+  .pdf-page-wrap { position: relative; background: #fff; box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 12px 40px rgba(16,24,40,.12); }
+  .pdf-page-wrap canvas { display: block; }
+
+  .text-hit { position: absolute; cursor: text; border-radius: 2px; }
+  .text-hit:hover { outline: 1.5px dashed hsl(var(--ring)); background: hsl(var(--ring) / .07); }
+  .text-hit.edited { background: hsl(142 71% 45% / .14); outline: 1px solid hsl(142 71% 45% / .55); }
+  .text-overlay { position: absolute; background: #fff; color: #000; overflow: hidden; white-space: nowrap; line-height: 1; display: flex; align-items: center; pointer-events: none; font-family: Arial, Helvetica, sans-serif; }
+
+  .edit-popover { position: absolute; z-index: 50; background: hsl(var(--background)); border: 1px solid hsl(var(--border)); border-radius: 10px; box-shadow: 0 12px 32px rgba(16,24,40,.2); padding: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 240px; }
+  .ep-label { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: .04em; }
+  .ep-input { width: 100%; font-family: var(--font-sans); font-size: 13px; border: 1px solid hsl(var(--input)); border-radius: 6px; padding: 6px 8px; resize: vertical; }
+  .ep-input:focus { outline: none; border-color: hsl(var(--ring)); box-shadow: 0 0 0 3px hsl(var(--ring) / .12); }
+  .ep-btns { display: flex; gap: 6px; justify-content: flex-end; }
+
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); padding: 9px 16px; border-radius: 999px; font-size: 12.5px; font-weight: 500; box-shadow: 0 8px 24px rgba(16,24,40,.2); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 60; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .loading-note { font-family: var(--font-mono); font-size: 12px; color: hsl(var(--muted-foreground)); }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark">✏️</div>
+      <div><b>Quick PDF Edit</b><br /><span>Click any text to edit it in place</span></div>
+    </div>
+    <div class="topbar-actions">
+      <span class="edits-badge" id="editsBadge" hidden>0 edits</span>
+      <button class="btn btn-sm" id="newFileBtn" type="button" hidden>📄 Open another PDF</button>
+      <button class="btn btn-primary btn-sm" id="downloadBtn" type="button" disabled>⬇ Download edited PDF</button>
+      <a class="back-link" href="index.html">← Back to CV Builder</a>
+    </div>
+  </header>
+
+  <div class="drop-stage" id="dropStage">
+    <div id="pdfDropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload a PDF to edit">
+      <div class="dropzone-icon">📄</div>
+      <div class="dropzone-text"><strong>Drop a PDF here</strong>, or <span class="dz-link">browse</span></div>
+      <div class="dropzone-sub">Click any piece of text in the rendered PDF to edit it directly — best for small fixes (a typo, a date, a word or two). The replacement uses a standard font and a white cover-up box, so it may not match the original font pixel-for-pixel, and it won't reflow surrounding text. Nothing is uploaded anywhere — this all runs in your browser.</div>
+      <input type="file" id="pdfFileInput" accept="application/pdf,.pdf" hidden />
+    </div>
+  </div>
+
+  <main class="workspace" id="workspace" hidden>
+    <div id="pagesContainer" style="display:flex; flex-direction:column; align-items:center; gap:24px; width:100%;"></div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+
+  var RENDER_SCALE = 1.6;
+  var originalBytes = null; // pristine copy of the uploaded file, used only at export time
+  var pdfDoc = null;
+  var activePopover = null;
+
+  function toast(msg) {
+    var t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(t._h);
+    t._h = setTimeout(function () { t.classList.remove("show"); }, 2600);
+  }
+
+  function updateEditsBadge() {
+    var count = document.querySelectorAll(".text-hit.edited").length;
+    var badge = document.getElementById("editsBadge");
+    badge.hidden = false;
+    badge.textContent = count + " edit" + (count === 1 ? "" : "s");
+  }
+
+  function closePopover() {
+    if (activePopover) { activePopover.remove(); activePopover = null; }
+  }
+  document.addEventListener("click", function (e) {
+    if (activePopover && !activePopover.contains(e.target) && !e.target.classList.contains("text-hit")) closePopover();
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closePopover(); });
+
+  function handleFile(file) {
+    if (!file) return;
+    if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name || "")) { toast("Please choose a PDF file"); return; }
+    file.arrayBuffer().then(function (buf) {
+      originalBytes = buf.slice(0); // independent copy — pdf.js may transfer/detach its own buffer
+      return pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
+    }).then(function (doc) {
+      pdfDoc = doc;
+      document.getElementById("dropStage").hidden = true;
+      document.getElementById("workspace").hidden = false;
+      document.getElementById("downloadBtn").disabled = false;
+      document.getElementById("newFileBtn").hidden = false;
+      document.getElementById("editsBadge").hidden = false;
+      document.getElementById("editsBadge").textContent = "0 edits";
+      renderAllPages();
+    }).catch(function (e) {
+      toast("Could not open this PDF: " + (e && e.message ? e.message : "unknown error"));
+    });
+  }
+
+  function renderAllPages() {
+    var container = document.getElementById("pagesContainer");
+    container.innerHTML = "";
+    var numPages = pdfDoc.numPages;
+    function next(i) {
+      if (i > numPages) return;
+      renderPage(i, container).then(function () { next(i + 1); });
+    }
+    next(1);
+  }
+
+  function renderPage(pageNum, container) {
+    return pdfDoc.getPage(pageNum).then(function (page) {
+      var viewport = page.getViewport({ scale: RENDER_SCALE });
+      var wrap = document.createElement("div");
+      wrap.className = "pdf-page-wrap";
+      wrap.style.width = viewport.width + "px";
+      wrap.style.height = viewport.height + "px";
+
+      var canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      wrap.appendChild(canvas);
+      container.appendChild(wrap);
+
+      var ctx = canvas.getContext("2d");
+      return page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function () {
+        return page.getTextContent();
+      }).then(function (textContent) {
+        textContent.items.forEach(function (item) {
+          if (!item.str || !item.str.trim()) return;
+          addTextHit(wrap, viewport, item, pageNum - 1);
+        });
+      });
+    });
+  }
+
+  function addTextHit(wrap, viewport, item, pageIndex) {
+    // item.transform = [a, b, c, d, x, y] in PDF user space (points, y-up,
+    // origin bottom-left) — the same coordinate system pdf-lib expects, so
+    // pdfX/pdfY/pdfWidth/pdfHeight below can be handed to pdf-lib as-is at
+    // export time with no further conversion.
+    var tr = item.transform;
+    var fontHeight = Math.hypot(tr[2], tr[3]) || Math.hypot(tr[0], tr[1]) || 10;
+    var pdfX = tr[4], pdfY = tr[5];
+    var pdfWidth = item.width || fontHeight * item.str.length * 0.5;
+    var pdfHeight = item.height || fontHeight;
+
+    var topLeft = viewport.convertToViewportPoint(pdfX, pdfY + pdfHeight);
+    var bottomRight = viewport.convertToViewportPoint(pdfX + pdfWidth, pdfY);
+    var left = Math.min(topLeft[0], bottomRight[0]);
+    var top = Math.min(topLeft[1], bottomRight[1]);
+    var w = Math.abs(bottomRight[0] - topLeft[0]);
+    var h = Math.abs(bottomRight[1] - topLeft[1]);
+    if (w < 2 || h < 2) return;
+
+    var fontName = (item.fontName || "").toLowerCase();
+    var meta = {
+      pageIndex: pageIndex,
+      pdfX: pdfX, pdfY: pdfY, pdfWidth: pdfWidth, pdfHeight: pdfHeight,
+      fontSize: fontHeight,
+      bold: fontName.indexOf("bold") !== -1,
+      italic: fontName.indexOf("italic") !== -1 || fontName.indexOf("oblique") !== -1,
+      oldText: item.str,
+      newText: null
+    };
+
+    var hit = document.createElement("div");
+    hit.className = "text-hit";
+    hit.style.left = left + "px";
+    hit.style.top = top + "px";
+    hit.style.width = w + "px";
+    hit.style.height = h + "px";
+    hit.title = "Click to edit";
+    hit._meta = meta;
+    hit.addEventListener("click", function (e) {
+      e.stopPropagation();
+      openEditPopover(hit, wrap);
+    });
+    wrap.appendChild(hit);
+  }
+
+  function openEditPopover(hit, wrap) {
+    closePopover();
+    var meta = hit._meta;
+    var pop = document.createElement("div");
+    pop.className = "edit-popover";
+    pop.style.left = hit.style.left;
+    pop.style.top = (parseFloat(hit.style.top) + parseFloat(hit.style.height) + 6) + "px";
+    pop.innerHTML =
+      '<span class="ep-label">Edit text</span>' +
+      '<textarea class="ep-input" rows="2"></textarea>' +
+      '<div class="ep-btns">' +
+      (meta.newText != null ? '<button type="button" class="btn btn-sm ep-reset">↺ Reset</button>' : "") +
+      '<button type="button" class="btn btn-sm ep-cancel">Cancel</button>' +
+      '<button type="button" class="btn btn-sm btn-primary ep-save">Save</button>' +
+      "</div>";
+    var textarea = pop.querySelector(".ep-input");
+    textarea.value = meta.newText != null ? meta.newText : meta.oldText;
+    wrap.appendChild(pop);
+    activePopover = pop;
+    textarea.focus();
+    textarea.select();
+
+    pop.querySelector(".ep-cancel").addEventListener("click", closePopover);
+    var resetBtn = pop.querySelector(".ep-reset");
+    if (resetBtn) resetBtn.addEventListener("click", function () { applyEdit(hit, wrap, meta.oldText); closePopover(); });
+    pop.querySelector(".ep-save").addEventListener("click", function () {
+      applyEdit(hit, wrap, textarea.value);
+      closePopover();
+    });
+    textarea.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { applyEdit(hit, wrap, textarea.value); closePopover(); }
+    });
+  }
+
+  function applyEdit(hit, wrap, newText) {
+    var meta = hit._meta;
+    var unchanged = newText === meta.oldText;
+    meta.newText = unchanged ? null : newText;
+    hit.classList.toggle("edited", !unchanged);
+
+    if (hit._overlayEl) { hit._overlayEl.remove(); hit._overlayEl = null; }
+    if (!unchanged) {
+      var ov = document.createElement("div");
+      ov.className = "text-overlay";
+      ov.style.left = hit.style.left;
+      ov.style.top = hit.style.top;
+      ov.style.width = hit.style.width;
+      ov.style.height = hit.style.height;
+      ov.style.fontSize = Math.max(8, parseFloat(hit.style.height) * 0.82) + "px";
+      ov.style.fontWeight = meta.bold ? "700" : "400";
+      ov.style.fontStyle = meta.italic ? "italic" : "normal";
+      ov.textContent = newText;
+      wrap.insertBefore(ov, hit);
+      hit._overlayEl = ov;
+    }
+    updateEditsBadge();
+  }
+
+  function pickFont(fonts, meta) {
+    if (meta.bold && meta.italic) return fonts.boldItalic;
+    if (meta.bold) return fonts.bold;
+    if (meta.italic) return fonts.italic;
+    return fonts.regular;
+  }
+
+  function exportEditedPdf() {
+    if (!originalBytes) return;
+    var edited = Array.prototype.slice.call(document.querySelectorAll(".text-hit.edited")).map(function (h) { return h._meta; });
+    if (!edited.length) { toast("No edits yet — click some text in the PDF first."); return; }
+
+    var downloadBtn = document.getElementById("downloadBtn");
+    downloadBtn.disabled = true;
+    var origLabel = downloadBtn.textContent;
+    downloadBtn.textContent = "⬇ Building…";
+
+    PDFLib.PDFDocument.load(originalBytes).then(function (doc) {
+      return Promise.all([
+        doc,
+        doc.embedFont(PDFLib.StandardFonts.Helvetica),
+        doc.embedFont(PDFLib.StandardFonts.HelveticaBold),
+        doc.embedFont(PDFLib.StandardFonts.HelveticaOblique),
+        doc.embedFont(PDFLib.StandardFonts.HelveticaBoldOblique)
+      ]);
+    }).then(function (res) {
+      var doc = res[0];
+      var fonts = { regular: res[1], bold: res[2], italic: res[3], boldItalic: res[4] };
+      var pages = doc.getPages();
+      edited.forEach(function (m) {
+        var page = pages[m.pageIndex];
+        if (!page) return;
+        var pad = 1.5;
+        page.drawRectangle({
+          x: m.pdfX - pad, y: m.pdfY - pad,
+          width: m.pdfWidth + pad * 2, height: m.pdfHeight + pad * 2,
+          color: PDFLib.rgb(1, 1, 1)
+        });
+        page.drawText(m.newText, {
+          x: m.pdfX, y: m.pdfY,
+          size: m.fontSize,
+          font: pickFont(fonts, m),
+          color: PDFLib.rgb(0, 0, 0)
+        });
+      });
+      return doc.save();
+    }).then(function (bytes) {
+      var blob = new Blob([bytes], { type: "application/pdf" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "edited.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      toast("✓ Downloaded — " + edited.length + " edit" + (edited.length === 1 ? "" : "s") + " applied");
+    }).catch(function (e) {
+      toast("Export failed: " + (e && e.message ? e.message : "unknown error"));
+    }).then(function () {
+      downloadBtn.disabled = false;
+      downloadBtn.textContent = origLabel;
+    });
+  }
+
+  var dropzone = document.getElementById("pdfDropzone");
+  var fileInput = document.getElementById("pdfFileInput");
+  dropzone.addEventListener("click", function () { fileInput.click(); });
+  dropzone.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } });
+  fileInput.addEventListener("change", function (e) { handleFile(e.target.files && e.target.files[0]); e.target.value = ""; });
+  ["dragenter", "dragover"].forEach(function (evt) {
+    dropzone.addEventListener(evt, function (e) { e.preventDefault(); dropzone.classList.add("dragover"); });
+  });
+  ["dragleave", "drop"].forEach(function (evt) {
+    dropzone.addEventListener(evt, function (e) { e.preventDefault(); dropzone.classList.remove("dragover"); });
+  });
+  dropzone.addEventListener("drop", function (e) {
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    handleFile(f);
+  });
+
+  document.getElementById("downloadBtn").addEventListener("click", exportEditedPdf);
+  document.getElementById("newFileBtn").addEventListener("click", function () {
+    pdfDoc = null; originalBytes = null;
+    document.getElementById("pagesContainer").innerHTML = "";
+    document.getElementById("workspace").hidden = true;
+    document.getElementById("dropStage").hidden = false;
+    document.getElementById("downloadBtn").disabled = true;
+    document.getElementById("newFileBtn").hidden = true;
+    document.getElementById("editsBadge").hidden = true;
+  });
+})();
+</script>
+</body>
+</html>
