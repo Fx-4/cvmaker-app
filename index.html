@@ -1365,7 +1365,7 @@
 
   // ---------- Editor lists ----------
   function bindInput(node, obj, key) { node.addEventListener("input", function () { obj[key] = node.value; touched(); renderPreview(); scheduleSave(); }); }
-  function btnIcon(txt) { var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-icon btn-sm btn-ghost"; b.textContent = txt; return b; }
+  function btnIcon(txt, label) { var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-icon btn-sm btn-ghost"; b.textContent = txt; if (label) { b.setAttribute("aria-label", label); b.title = label; } return b; }
   function swap(a, i, j) { var t = a[i]; a[i] = a[j]; a[j] = t; }
 
   function inputField(parent, label, obj, key, opts) {
@@ -1468,9 +1468,10 @@
         var head = document.createElement("div"); head.className = "item-head";
         head.innerHTML = '<span class="drag-handle" title="Drag to reorder (desktop) — use ↑↓ on mobile">⠿</span><span class="idx">' + esc(T(opts.labelKey)) + " " + (i + 1) + "</span>";
         var tools = document.createElement("div"); tools.className = "item-tools";
-        var up = btnIcon("↑"); up.disabled = i === 0; up.addEventListener("click", function () { swap(arr, i, i - 1); touched(); render(); renderPreview(); scheduleSave(); });
-        var dn = btnIcon("↓"); dn.disabled = i === arr.length - 1; dn.addEventListener("click", function () { swap(arr, i, i + 1); touched(); render(); renderPreview(); scheduleSave(); });
-        var rm = btnIcon("✕"); rm.addEventListener("click", function () { arr.splice(i, 1); touched(); render(); renderPreview(); scheduleSave(); });
+        var itemLabel = T(opts.labelKey) + " " + (i + 1);
+        var up = btnIcon("↑", "Move " + itemLabel + " up"); up.disabled = i === 0; up.addEventListener("click", function () { swap(arr, i, i - 1); touched(); render(); renderPreview(); scheduleSave(); });
+        var dn = btnIcon("↓", "Move " + itemLabel + " down"); dn.disabled = i === arr.length - 1; dn.addEventListener("click", function () { swap(arr, i, i + 1); touched(); render(); renderPreview(); scheduleSave(); });
+        var rm = btnIcon("✕", "Remove " + itemLabel); rm.addEventListener("click", function () { arr.splice(i, 1); touched(); render(); renderPreview(); scheduleSave(); });
         tools.appendChild(up); tools.appendChild(dn); tools.appendChild(rm); head.appendChild(tools); card.appendChild(head);
         opts.fields(item, card); mount.appendChild(card);
 
