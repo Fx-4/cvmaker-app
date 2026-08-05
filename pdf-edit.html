@@ -54,8 +54,8 @@
 
   .text-hit { position: absolute; cursor: text; border-radius: 2px; }
   .text-hit:hover { outline: 1.5px dashed hsl(var(--ring)); background: hsl(var(--ring) / .07); }
-  .text-hit.edited { background: hsl(142 71% 45% / .14); outline: 1px solid hsl(142 71% 45% / .55); }
-  .text-overlay { position: absolute; background: #fff; color: #000; overflow: hidden; white-space: nowrap; line-height: 1; display: flex; align-items: center; pointer-events: none; font-family: Arial, Helvetica, sans-serif; }
+  .text-hit.edited { outline: 1px solid hsl(142 71% 45% / .55); }
+  .text-overlay { position: absolute; overflow: hidden; white-space: nowrap; line-height: 1; display: flex; align-items: center; pointer-events: none; font-family: Arial, Helvetica, sans-serif; }
 
   .edit-popover { position: absolute; z-index: 50; background: hsl(var(--background)); border: 1px solid hsl(var(--border)); border-radius: 10px; box-shadow: 0 12px 32px rgba(16,24,40,.2); padding: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 240px; }
   .ep-label { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: .04em; }
@@ -65,8 +65,6 @@
 
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); padding: 9px 16px; border-radius: 999px; font-size: 12.5px; font-weight: 500; box-shadow: 0 8px 24px rgba(16,24,40,.2); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 60; }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-  .loading-note { font-family: var(--font-mono); font-size: 12px; color: hsl(var(--muted-foreground)); }
 </style>
 </head>
 <body>
@@ -87,7 +85,7 @@
     <div id="pdfDropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload a PDF to edit">
       <div class="dropzone-icon">📄</div>
       <div class="dropzone-text"><strong>Drop a PDF here</strong>, or <span class="dz-link">browse</span></div>
-      <div class="dropzone-sub">Click any piece of text in the rendered PDF to edit it directly — best for small fixes (a typo, a date, a word or two). The replacement uses a standard font and a white cover-up box, so it may not match the original font pixel-for-pixel, and it won't reflow surrounding text. Nothing is uploaded anywhere — this all runs in your browser.</div>
+      <div class="dropzone-sub">Click any piece of text in the rendered PDF to edit it directly — best for small fixes (a typo, a date, a word or two). The tool tries to reuse the PDF's own embedded font and matches the surrounding background/text color, falling back to a standard font when it can't — either way it won't reflow surrounding text. Nothing is uploaded anywhere — this all runs in your browser.</div>
       <input type="file" id="pdfFileInput" accept="application/pdf,.pdf" hidden />
     </div>
   </div>
@@ -100,6 +98,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.js"></script>
 <script>
 (function () {
   "use strict";
@@ -119,6 +118,8 @@
     clearTimeout(t._h);
     t._h = setTimeout(function () { t.classList.remove("show"); }, 2600);
   }
+
+  function rgbCss(c) { return "rgb(" + c.r + "," + c.g + "," + c.b + ")"; }
 
   function updateEditsBadge() {
     var count = document.querySelectorAll(".text-hit.edited").length;
@@ -180,19 +181,58 @@
       wrap.appendChild(canvas);
       container.appendChild(wrap);
 
-      var ctx = canvas.getContext("2d");
+      var ctx = canvas.getContext("2d", { willReadFrequently: true });
       return page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function () {
         return page.getTextContent();
       }).then(function (textContent) {
         textContent.items.forEach(function (item) {
           if (!item.str || !item.str.trim()) return;
-          addTextHit(wrap, viewport, item, pageNum - 1);
+          addTextHit(wrap, viewport, item, pageNum - 1, ctx, page);
         });
       });
     });
   }
 
-  function addTextHit(wrap, viewport, item, pageIndex) {
+  // Best-effort background/ink color sampling from the already-rendered
+  // canvas, so the cover-up box and replacement text don't just default to
+  // white-on-black when the original isn't (a colored header, gray
+  // secondary text, etc). Samples a handful of points rather than the
+  // whole box, since a full scan of every edit would be slow.
+  function samplePixel(ctx, x, y) {
+    x = Math.round(x); y = Math.round(y);
+    if (x < 0 || y < 0 || x >= ctx.canvas.width || y >= ctx.canvas.height) return null;
+    try {
+      var d = ctx.getImageData(x, y, 1, 1).data;
+      return [d[0], d[1], d[2]];
+    } catch (e) { return null; }
+  }
+
+  function sampleBgColor(ctx, left, top, w, h) {
+    var points = [
+      [left - 3, top + h / 2], [left + w + 3, top + h / 2],
+      [left + w / 2, top - 2], [left + w / 2, top + h + 2]
+    ];
+    var samples = points.map(function (p) { return samplePixel(ctx, p[0], p[1]); }).filter(Boolean);
+    if (!samples.length) return { r: 255, g: 255, b: 255 };
+    var sum = samples.reduce(function (a, s) { return [a[0] + s[0], a[1] + s[1], a[2] + s[2]]; }, [0, 0, 0]);
+    return { r: Math.round(sum[0] / samples.length), g: Math.round(sum[1] / samples.length), b: Math.round(sum[2] / samples.length) };
+  }
+
+  function sampleTextColor(ctx, left, top, w, h) {
+    var darkest = null, darkestLum = 999;
+    var stepsX = 6, stepsY = 4;
+    for (var i = 0; i <= stepsX; i++) {
+      for (var j = 0; j <= stepsY; j++) {
+        var px = samplePixel(ctx, left + (w * i) / stepsX, top + (h * j) / stepsY);
+        if (!px) continue;
+        var lum = 0.299 * px[0] + 0.587 * px[1] + 0.114 * px[2];
+        if (lum < darkestLum) { darkestLum = lum; darkest = px; }
+      }
+    }
+    return darkest ? { r: darkest[0], g: darkest[1], b: darkest[2] } : { r: 0, g: 0, b: 0 };
+  }
+
+  function addTextHit(wrap, viewport, item, pageIndex, ctx, page) {
     // item.transform = [a, b, c, d, x, y] in PDF user space (points, y-up,
     // origin bottom-left) — the same coordinate system pdf-lib expects, so
     // pdfX/pdfY/pdfWidth/pdfHeight below can be handed to pdf-lib as-is at
@@ -211,13 +251,29 @@
     var h = Math.abs(bottomRight[1] - topLeft[1]);
     if (w < 2 || h < 2) return;
 
-    var fontName = (item.fontName || "").toLowerCase();
+    // pdf.js's item.fontName is its own internal alias (e.g. "g_d0_f1"), not
+    // the PDF's real font name — but the resolved font object in
+    // commonObjs usually carries the actual PostScript/family name, which
+    // is what we need later to match against pdf-lib's view of the same
+    // font resource for reuse.
+    var fontLabel = "";
+    try {
+      if (page.commonObjs && page.commonObjs.has(item.fontName)) {
+        var fontObj = page.commonObjs.get(item.fontName);
+        fontLabel = (fontObj && (fontObj.name || fontObj.loadedName || fontObj.fallbackName)) || "";
+      }
+    } catch (e) {}
+    var combinedLabel = ((item.fontName || "") + " " + fontLabel).toLowerCase();
+
     var meta = {
       pageIndex: pageIndex,
       pdfX: pdfX, pdfY: pdfY, pdfWidth: pdfWidth, pdfHeight: pdfHeight,
       fontSize: fontHeight,
-      bold: fontName.indexOf("bold") !== -1,
-      italic: fontName.indexOf("italic") !== -1 || fontName.indexOf("oblique") !== -1,
+      bold: combinedLabel.indexOf("bold") !== -1,
+      italic: combinedLabel.indexOf("italic") !== -1 || combinedLabel.indexOf("oblique") !== -1,
+      fontLabel: fontLabel || item.fontName || "",
+      bgColor: sampleBgColor(ctx, left, top, w, h),
+      textColor: sampleTextColor(ctx, left, top, w, h),
       oldText: item.str,
       newText: null
     };
@@ -285,6 +341,8 @@
       ov.style.top = hit.style.top;
       ov.style.width = hit.style.width;
       ov.style.height = hit.style.height;
+      ov.style.background = rgbCss(meta.bgColor);
+      ov.style.color = rgbCss(meta.textColor);
       ov.style.fontSize = Math.max(8, parseFloat(hit.style.height) * 0.82) + "px";
       ov.style.fontWeight = meta.bold ? "700" : "400";
       ov.style.fontStyle = meta.italic ? "italic" : "normal";
@@ -295,50 +353,189 @@
     updateEditsBadge();
   }
 
-  function pickFont(fonts, meta) {
+  function pickStdFont(fonts, meta) {
     if (meta.bold && meta.italic) return fonts.boldItalic;
     if (meta.bold) return fonts.bold;
     if (meta.italic) return fonts.italic;
     return fonts.regular;
   }
 
+  // ---------- Best-effort: reuse the PDF's own embedded font ----------
+  // pdf-lib has no public/documented API for "give me the font this PDF
+  // already embeds" — this reaches into its low-level object model
+  // (Resources -> Font -> FontDescriptor -> FontFile2/3) to find it. Every
+  // step is wrapped so a wrong assumption about the exact API just skips
+  // that one font (falls back to a standard font below), rather than
+  // failing the whole export.
+  function pdfNameToString(nameObj) {
+    if (!nameObj) return "";
+    try {
+      if (typeof nameObj.decodeText === "function") return nameObj.decodeText();
+      if (typeof nameObj.asString === "function") return nameObj.asString();
+    } catch (e) {}
+    return String(nameObj).replace(/^\//, "");
+  }
+
+  function inflateIfNeeded(bytes, filterName) {
+    if (!bytes) return Promise.resolve(null);
+    if (!filterName || filterName.indexOf("Flate") === -1) return Promise.resolve(bytes);
+    if (typeof DecompressionStream === "undefined") return Promise.resolve(null);
+    try {
+      var stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
+      return new Response(stream).arrayBuffer().then(function (buf) { return new Uint8Array(buf); }).catch(function () { return null; });
+    } catch (e) { return Promise.resolve(null); }
+  }
+
+  function collectPageFonts(doc, pageIndex) {
+    try {
+      var page = doc.getPages()[pageIndex];
+      if (!page || !page.node || typeof page.node.Resources !== "function") return Promise.resolve([]);
+      var resources = page.node.Resources();
+      if (!resources || typeof resources.get !== "function") return Promise.resolve([]);
+      var fontDictRef = resources.get(PDFLib.PDFName.of("Font"));
+      if (!fontDictRef) return Promise.resolve([]);
+      var fontDict = doc.context.lookup(fontDictRef, PDFLib.PDFDict);
+      if (!fontDict) return Promise.resolve([]);
+      var keys = fontDict.keys();
+      var jobs = keys.map(function (key) {
+        return new Promise(function (resolve) {
+          try {
+            var fontRef = fontDict.get(key);
+            var fontObj = doc.context.lookup(fontRef, PDFLib.PDFDict);
+            if (!fontObj) return resolve(null);
+            var subtype = pdfNameToString(fontObj.get(PDFLib.PDFName.of("Subtype")));
+            var descFontObj = fontObj;
+            if (subtype === "Type0") {
+              var descendantsRef = fontObj.get(PDFLib.PDFName.of("DescendantFonts"));
+              var descendants = doc.context.lookup(descendantsRef, PDFLib.PDFArray);
+              if (descendants && descendants.size && descendants.size() > 0) {
+                descFontObj = doc.context.lookup(descendants.get(0), PDFLib.PDFDict);
+              }
+            }
+            if (!descFontObj) return resolve(null);
+            var baseFontName = pdfNameToString(fontObj.get(PDFLib.PDFName.of("BaseFont")));
+            var descriptorRef = descFontObj.get(PDFLib.PDFName.of("FontDescriptor"));
+            var descriptor = doc.context.lookup(descriptorRef, PDFLib.PDFDict);
+            if (!descriptor) return resolve(null);
+            var fileRef = descriptor.get(PDFLib.PDFName.of("FontFile2")) || descriptor.get(PDFLib.PDFName.of("FontFile3"));
+            if (!fileRef) return resolve(null);
+            var streamObj = doc.context.lookup(fileRef);
+            if (!streamObj) return resolve(null);
+            var raw = typeof streamObj.getContents === "function" ? streamObj.getContents() : streamObj.contents;
+            var streamDict = streamObj.dict || (typeof streamObj.getDict === "function" ? streamObj.getDict() : null);
+            var filterName = streamDict ? pdfNameToString(streamDict.get(PDFLib.PDFName.of("Filter"))) : null;
+            inflateIfNeeded(raw, filterName).then(function (bytes) {
+              if (!bytes || !bytes.length) return resolve(null);
+              resolve({ baseFontName: baseFontName, bytes: bytes });
+            });
+          } catch (e) { resolve(null); }
+        });
+      });
+      return Promise.all(jobs).then(function (arr) { return arr.filter(Boolean); });
+    } catch (e) {
+      return Promise.resolve([]);
+    }
+  }
+
+  function normalizeFontName(name) {
+    return String(name || "").replace(/^[A-Z]{6}\+/, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+
+  function findMatchingFont(pageFonts, meta) {
+    var target = normalizeFontName(meta.fontLabel);
+    if (!target || !pageFonts.length) return null;
+    var match = null;
+    pageFonts.forEach(function (f) {
+      var candidate = normalizeFontName(f.baseFontName);
+      if (candidate && (candidate === target || candidate.indexOf(target) !== -1 || target.indexOf(candidate) !== -1)) match = f;
+    });
+    return match;
+  }
+
+  function resolveEmbeddedFonts(doc, editedHits) {
+    var byPage = {};
+    editedHits.forEach(function (hit) {
+      var m = hit._meta;
+      (byPage[m.pageIndex] = byPage[m.pageIndex] || []).push(m);
+    });
+    var pageIndexes = Object.keys(byPage);
+    return pageIndexes.reduce(function (chain, pageIndexStr) {
+      return chain.then(function () {
+        return collectPageFonts(doc, parseInt(pageIndexStr, 10)).then(function (pageFonts) {
+          var cache = {}; // baseFontName -> embedded PDFFont | null
+          return byPage[pageIndexStr].reduce(function (inner, m) {
+            return inner.then(function () {
+              var match = findMatchingFont(pageFonts, m);
+              if (!match) { m._resolvedFont = null; return; }
+              if (Object.prototype.hasOwnProperty.call(cache, match.baseFontName)) {
+                m._resolvedFont = cache[match.baseFontName];
+                return;
+              }
+              return doc.embedFont(match.bytes, { subset: false }).then(function (embedded) {
+                cache[match.baseFontName] = embedded;
+                m._resolvedFont = embedded;
+              }).catch(function () {
+                cache[match.baseFontName] = null;
+                m._resolvedFont = null;
+              });
+            });
+          }, Promise.resolve());
+        });
+      });
+    }, Promise.resolve());
+  }
+
   function exportEditedPdf() {
     if (!originalBytes) return;
-    var edited = Array.prototype.slice.call(document.querySelectorAll(".text-hit.edited")).map(function (h) { return h._meta; });
-    if (!edited.length) { toast("No edits yet — click some text in the PDF first."); return; }
+    var editedHits = Array.prototype.slice.call(document.querySelectorAll(".text-hit.edited"));
+    if (!editedHits.length) { toast("No edits yet — click some text in the PDF first."); return; }
 
     var downloadBtn = document.getElementById("downloadBtn");
     downloadBtn.disabled = true;
     var origLabel = downloadBtn.textContent;
     downloadBtn.textContent = "⬇ Building…";
 
-    PDFLib.PDFDocument.load(originalBytes).then(function (doc) {
+    var doc, stdFonts;
+    PDFLib.PDFDocument.load(originalBytes).then(function (loadedDoc) {
+      doc = loadedDoc;
+      // Reusing the PDF's own embedded font (below) needs fontkit registered
+      // first — pdf-lib's embedFont() throws FontkitNotRegisteredError for
+      // any non-standard font otherwise. Registering it doesn't affect the
+      // standard-font embeds that follow.
+      if (window.fontkit) {
+        try { doc.registerFontkit(window.fontkit); } catch (e) {}
+      }
       return Promise.all([
-        doc,
         doc.embedFont(PDFLib.StandardFonts.Helvetica),
         doc.embedFont(PDFLib.StandardFonts.HelveticaBold),
         doc.embedFont(PDFLib.StandardFonts.HelveticaOblique),
         doc.embedFont(PDFLib.StandardFonts.HelveticaBoldOblique)
       ]);
     }).then(function (res) {
-      var doc = res[0];
-      var fonts = { regular: res[1], bold: res[2], italic: res[3], boldItalic: res[4] };
+      stdFonts = { regular: res[0], bold: res[1], italic: res[2], boldItalic: res[3] };
+      return resolveEmbeddedFonts(doc, editedHits);
+    }).then(function () {
       var pages = doc.getPages();
-      edited.forEach(function (m) {
+      editedHits.forEach(function (hit) {
+        var m = hit._meta;
         var page = pages[m.pageIndex];
         if (!page) return;
         var pad = 1.5;
         page.drawRectangle({
           x: m.pdfX - pad, y: m.pdfY - pad,
           width: m.pdfWidth + pad * 2, height: m.pdfHeight + pad * 2,
-          color: PDFLib.rgb(1, 1, 1)
+          color: PDFLib.rgb(m.bgColor.r / 255, m.bgColor.g / 255, m.bgColor.b / 255)
         });
-        page.drawText(m.newText, {
-          x: m.pdfX, y: m.pdfY,
-          size: m.fontSize,
-          font: pickFont(fonts, m),
-          color: PDFLib.rgb(0, 0, 0)
-        });
+        var textColor = PDFLib.rgb(m.textColor.r / 255, m.textColor.g / 255, m.textColor.b / 255);
+        var fontToUse = m._resolvedFont || pickStdFont(stdFonts, m);
+        try {
+          page.drawText(m.newText, { x: m.pdfX, y: m.pdfY, size: m.fontSize, font: fontToUse, color: textColor });
+        } catch (e) {
+          // The reused embedded font likely can't encode a character in the
+          // new text (e.g. a glyph missing from a subsetted font) — retry
+          // with the always-safe standard font instead of losing the edit.
+          page.drawText(m.newText, { x: m.pdfX, y: m.pdfY, size: m.fontSize, font: pickStdFont(stdFonts, m), color: textColor });
+        }
       });
       return doc.save();
     }).then(function (bytes) {
@@ -351,7 +548,7 @@
       a.click();
       a.remove();
       setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
-      toast("✓ Downloaded — " + edited.length + " edit" + (edited.length === 1 ? "" : "s") + " applied");
+      toast("✓ Downloaded — " + editedHits.length + " edit" + (editedHits.length === 1 ? "" : "s") + " applied");
     }).catch(function (e) {
       toast("Export failed: " + (e && e.message ? e.message : "unknown error"));
     }).then(function () {

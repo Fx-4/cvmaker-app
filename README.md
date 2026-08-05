@@ -38,10 +38,13 @@ in your browser (`localStorage`) only. Includes:
 - **Quick PDF Edit** (`pdf-edit.html`) — a separate tool linked from the
   import dropzone for small fixes (a typo, a date) directly on an existing
   PDF, without re-entering everything into the form. Click any text in the
-  rendered PDF, edit it inline, download the result. It's an overlay edit
-  (white-out the old text, draw new text in a standard font at the same
-  spot via pdf-lib) — good for one or two words, not a perfect font match,
-  and it doesn't reflow surrounding text.
+  rendered PDF, edit it inline, download the result. It's still an overlay
+  edit (cover the old text, draw the new text at the same spot via
+  pdf-lib) — no reflow, so it's meant for one or two words, not a rewrite.
+  Two things it does try to get right: it reuses the PDF's own embedded
+  font when it can find and match one (falling back to a standard font
+  otherwise), and it samples the actual background/text color from the
+  rendered page instead of assuming white-on-black.
 
 All AI features are powered by a serverless function that tries Groq, then
 Mistral, then OpenRouter (free model) as a last resort.
