@@ -1123,7 +1123,7 @@
             if (p.link) projTitle += certCheck(p.link);
             
             var projText = projTitle + ': ' + esc(p.summary || "");
-            if (p.tech && p.tech.length) {
+            if (Array.isArray(p.tech) && p.tech.length) {
               projText += ' [Tech: ' + p.tech.map(esc).join(", ") + ']';
             }
             html += '<div class="r-bullet"><span class="bullet-sq"></span><span class="bullet-text">' + projText + '</span></div>';
@@ -1200,7 +1200,7 @@
             else if (p.link) h += '<div class="r-period" style="margin-top:2px">' + esc(short(p.link)) + "</div>";
             h += "</div>";
             if (p.summary) h += '<div class="r-desc">' + esc(p.summary) + "</div>";
-            if (p.tech && p.tech.length) h += '<div class="r-badges">' + p.tech.map(function (t) { return '<span class="r-badge">' + esc(t) + "</span>"; }).join("") + "</div>";
+            if (Array.isArray(p.tech) && p.tech.length) h += '<div class="r-badges">' + p.tech.map(function (t) { return '<span class="r-badge">' + esc(t) + "</span>"; }).join("") + "</div>";
             h += "</div>";
           });
           return h + "</div></section>";
@@ -1273,7 +1273,7 @@
             if (isAts) {
               h += '<div class="r-entry"><div class="r-entry-head"><div class="r-entry-title">' + (esc(p.name) || "—") + (p.link ? ' · <a href="' + esc(href(p.link)) + '" target="_blank" rel="noopener">' + esc(short(p.link)) + '</a>' : "") + (p.role ? ' <span style="font-weight: 500; font-size: 11.5px; color: hsl(var(--muted-foreground));">(' + esc(p.role) + ')</span>' : "") + "</div></div>";
               if (p.summary) h += '<div class="r-desc">' + esc(p.summary) + "</div>";
-              if (p.tech && p.tech.length) h += '<div class="r-desc" style="margin-top: 3px; font-weight: 500;">Technologies: ' + p.tech.map(esc).join(", ") + "</div>";
+              if (Array.isArray(p.tech) && p.tech.length) h += '<div class="r-desc" style="margin-top: 3px; font-weight: 500;">Technologies: ' + p.tech.map(esc).join(", ") + "</div>";
               h += "</div>";
             } else {
               h += '<div class="r-proj"><div class="r-entry-head"><div class="r-entry-title">' + (esc(p.name) || "—") + (p.link ? '<span class="link-dot"></span>' : "") + (p.featured ? '<span class="feat">' + esc(T("featuredTag")) + "</span>" : "") + "</div>";
@@ -1281,7 +1281,7 @@
               else if (p.link) h += '<div class="r-period" style="margin-top:2px">' + esc(short(p.link)) + "</div>";
               h += "</div>";
               if (p.summary) h += '<div class="r-desc">' + esc(p.summary) + "</div>";
-              if (p.tech && p.tech.length) h += '<div class="r-badges">' + p.tech.map(function (t) { return '<span class="r-badge">' + esc(t) + "</span>"; }).join("") + "</div>";
+              if (Array.isArray(p.tech) && p.tech.length) h += '<div class="r-badges">' + p.tech.map(function (t) { return '<span class="r-badge">' + esc(t) + "</span>"; }).join("") + "</div>";
               h += "</div>";
             }
           });
@@ -1786,6 +1786,9 @@
     if (state.about && state.about.trim()) {
       list.push({ kind: "summary", label: "Summary", get: function () { return state.about; }, set: function (v) { state.about = v; } });
     }
+    state.work.forEach(function (w, i) {
+      if (w.summary && w.summary.trim()) list.push({ kind: "org", label: "Work: " + (w.org || "#" + (i + 1)), get: function () { return w.summary; }, set: function (v) { w.summary = v; } });
+    });
     state.org.forEach(function (o, i) {
       if (o.summary && o.summary.trim()) list.push({ kind: "org", label: "Org: " + (o.org || "#" + (i + 1)), get: function () { return o.summary; }, set: function (v) { o.summary = v; } });
     });
@@ -2037,7 +2040,25 @@
     setTimeout(function () { page.classList.remove("cv-flash"); }, 950);
   }
 
+  // The model is instructed to match each section's item shape, but nothing
+  // enforces that server-side beyond "value is an object" — a "proj" add/
+  // update whose "tech" isn't an array would otherwise reach renderPreview()
+  // and crash on p.tech.map(...) the moment it renders. Coerce before the
+  // action is even shown, so both the preview diff and the applied state
+  // stay consistent.
+  function sanitizeChatActionValue(action) {
+    if (action.type === "add" && action.key === "proj" && action.value && typeof action.value === "object") {
+      action.value.tech = Array.isArray(action.value.tech) ? action.value.tech : [];
+      action.value.featured = !!action.value.featured;
+    } else if (action.type === "update" && /\.tech$/.test(action.path || "") && !Array.isArray(action.value)) {
+      action.value = typeof action.value === "string" && action.value.trim()
+        ? action.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean)
+        : [];
+    }
+  }
+
   function appendChatAction(action) {
+    sanitizeChatActionValue(action);
     var body = document.getElementById("chatBody");
     var card = document.createElement("div");
     card.className = "chat-action";
