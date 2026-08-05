@@ -360,6 +360,27 @@
     return fonts.regular;
   }
 
+  // Reused embedded fonts are near-always PDF *subsets* — Acrobat/browser
+  // print-to-PDF only embeds the glyphs the original document actually
+  // used (that's what the "AAAAAA+" prefix on the font name means). A
+  // replacement like "REPLACED NAME" almost certainly needs a letter the
+  // original text never used, and pdf-lib does NOT throw for a missing
+  // glyph — it silently draws a blank/notdef box instead, so the
+  // try/catch around drawText below never catches this. Must check
+  // character coverage before drawing, not just handle a draw-time throw.
+  function fontSupportsText(font, text) {
+    if (!font || typeof font.getCharacterSet !== "function") return true; // e.g. a StandardFonts font — assumed fine
+    try {
+      var set = font.getCharacterSet();
+      for (var i = 0; i < text.length; i++) {
+        if (set.indexOf(text.codePointAt(i)) === -1) return false;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // ---------- Best-effort: reuse the PDF's own embedded font ----------
   // pdf-lib has no public/documented API for "give me the font this PDF
   // already embeds" — this reaches into its low-level object model
@@ -527,13 +548,16 @@
           color: PDFLib.rgb(m.bgColor.r / 255, m.bgColor.g / 255, m.bgColor.b / 255)
         });
         var textColor = PDFLib.rgb(m.textColor.r / 255, m.textColor.g / 255, m.textColor.b / 255);
-        var fontToUse = m._resolvedFont || pickStdFont(stdFonts, m);
+        // Reused embedded fonts are almost always PDF subsets containing
+        // only the glyphs the original document used — pdf-lib does NOT
+        // throw for a character outside that set, it silently draws a
+        // blank box, so this has to be checked before drawing rather than
+        // caught after. Confirmed against a real font: it's missing "R"
+        // entirely because the source text never used that letter.
+        var fontToUse = (m._resolvedFont && fontSupportsText(m._resolvedFont, m.newText)) ? m._resolvedFont : pickStdFont(stdFonts, m);
         try {
           page.drawText(m.newText, { x: m.pdfX, y: m.pdfY, size: m.fontSize, font: fontToUse, color: textColor });
         } catch (e) {
-          // The reused embedded font likely can't encode a character in the
-          // new text (e.g. a glyph missing from a subsetted font) — retry
-          // with the always-safe standard font instead of losing the edit.
           page.drawText(m.newText, { x: m.pdfX, y: m.pdfY, size: m.fontSize, font: pickStdFont(stdFonts, m), color: textColor });
         }
       });
